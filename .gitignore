@@ -55,3 +55,7 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# research/ clones (reference only)
+/research/*
+!/research/README.md
