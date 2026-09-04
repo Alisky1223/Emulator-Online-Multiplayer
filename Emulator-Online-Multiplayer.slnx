@@ -1,2 +1,21 @@
 <Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Client/">
+    <Project Path="src/Client/Client/Client.csproj" />
+  </Folder>
+  <Folder Name="/src/Emulator/">
+    <Project Path="src/Emulator/Emulator/Emulator.csproj" />
+  </Folder>
+  <Folder Name="/src/Protocol/">
+    <Project Path="src/Protocol/Protocol/Protocol.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/">
+    <Project Path="src/Server/Server/Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Architecture.Tests/Architecture.Tests.csproj" />
+    <Project Path="tests/E2E.Tests/E2E.Tests.csproj" />
+    <Project Path="tests/Integration.Tests/Integration.Tests.csproj" />
+    <Project Path="tests/Unit.Tests/Unit.Tests.csproj" />
+  </Folder>
 </Solution>
