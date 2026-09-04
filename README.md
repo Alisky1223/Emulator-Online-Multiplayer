@@ -1,397 +1,144 @@
-# Emulator Multiplayer
+# Emulator Online Multiplayer
 
-A multiplayer framework for classic console games that lets each player run the game locally while synchronizing controller input over the network.
+A web platform where two players play a supported retro game online while **each browser locally emulates the player's own legally obtained ROM**. The server coordinates matchmaking and sessions; gameplay stays in sync by exchanging **frame-based controller inputs**, not video or game state.
 
-The core idea is simple:
-
-> **Each player runs the emulator and ROM locally. The server synchronizes player inputs and timing rather than streaming video or game state.**
-
-This approach aims to provide a lightweight online multiplayer experience for games that were originally designed for local multiplayer.
+> **Run locally. Synchronize inputs. Play together.**
 
 ## 🎮 Concept
 
-Instead of running the game on a central server and streaming the video to players, every participant runs an emulator on their own computer.
+Instead of running the game on a central server and streaming video, every player runs an emulator in their **own browser** via [EmulatorJS](https://github.com/EmulatorJS/EmulatorJS). The backend never sees the ROM, the video, or the full game state — only inputs, frame numbers, and session state.
 
 ```text
-                 ┌─────────────────────┐
-                 │   Multiplayer Server │
-                 │                     │
-                 │  Input Synchronizer │
-                 │  Session / Lobby    │
-                 └──────────┬──────────┘
-                            │
-              Input + Frame │ Synchronization
-                            │
-             ┌──────────────┴──────────────┐
-             │                             │
-      ┌──────▼──────┐               ┌──────▼──────┐
-      │   Player 1  │               │   Player 2  │
-      │              │               │              │
-      │   Emulator   │               │   Emulator   │
-      │     +        │               │     +        │
-      │  Local ROM   │               │  Local ROM   │
-      └──────────────┘               └──────────────┘
+                         OUR PLATFORM
+                              │
+                ┌─────────────┴─────────────┐
+                │                           │
+          Control Plane                Game Plane
+          (ASP.NET Core)               (Browser / EmulatorJS)
+                │                           │
+       ┌────────┼────────┐          ┌───────┴───────┐
+    Account  Lobby   Matchmaking   Player A       Player B
+                                   Emulator        Emulator
+                                     │               │
+                                   ROM A            ROM B
+                                     │               │
+                                     └── inputs ─────┘
 ```
-
-The server does **not** need to transmit:
-
-* Game video
-* Audio
-* ROM files
-* Emulator state every frame
-* Full game state
-
-Instead, it primarily synchronizes:
-
-* Controller inputs
-* Frame numbers
-* Player/session state
-* Synchronization events
-
-## 🎯 Goals
-
-* Enable online multiplayer for supported retro games.
-* Keep emulator execution local to each player.
-* Minimize network bandwidth.
-* Avoid centralized ROM hosting.
-* Support legally owned ROMs supplied by players.
-* Provide deterministic synchronization between emulator instances.
-* Build a reusable networking layer rather than a game-specific implementation.
 
 ## 🧠 How It Works
 
-For a deterministic emulator, the same:
+A deterministic emulator produces the same result given the same:
 
 ```text
-ROM
-+
-Emulator Version
-+
-Initial State
-+
-Input Sequence
-+
-Frame Timing
+ROM  +  Core version  +  Initial state  +  Input sequence  +  Frame timing
 ```
 
-should produce the same game state.
-
-Therefore, instead of sending the entire game state over the network, the system can synchronize the **inputs**.
-
-For example:
+So the network only carries inputs, tagged with the frame they apply to:
 
 ```text
-Frame 1000
-Player 1 → LEFT
-
-Frame 1001
-Player 1 → LEFT + A
-
-Frame 1002
-Player 1 → RELEASE
-
-Frame 1003
-Player 2 → RIGHT
+Frame 1000  P1 → LEFT
+Frame 1001  P1 → LEFT + A
+Frame 1003  P2 → RIGHT
 ```
 
-Each local emulator receives the same input sequence at the same frame.
+Each local emulator applies the same input at the same frame and both stay synchronized.
 
-The objective is for both emulators to remain synchronized.
+## 🌐 Two Planes
 
-## 🌐 Network Architecture
+### Control plane — ASP.NET Core
 
-The initial architecture is planned around an authoritative synchronization server.
+Accounts · game catalog · rooms · matchmaking · session lifecycle · ready state · ROM-hash verification · WebRTC signaling. **Never simulates the game.**
+
+### Game plane — browser
+
+EmulatorJS + a libretro Genesis core + local ROM. Player inputs travel A↔B:
+
+- **Prototype:** WebSocket relay through the server (easy to debug).
+- **Target:** WebRTC DataChannel peer-to-peer; server only does signaling.
 
 ```text
-Client A ─────┐
-              │
-              ▼
-        ┌──────────────┐
-        │ Game Session │
-        │    Server    │
-        └──────┬───────┘
-               │
-Client B ──────┘
+Prototype:  A ─► ASP.NET Core ─► B
+Target:     A ◄──── WebRTC DataChannel ────► B   (server signals only)
 ```
-
-The server can be responsible for:
-
-1. Creating game sessions
-2. Joining/leaving players
-3. Assigning player slots
-4. Establishing the initial synchronization point
-5. Distributing controller inputs
-6. Tracking frame numbers
-7. Detecting synchronization problems
-
-The actual game simulation remains local.
 
 ## 🕹️ Emulator
 
-The project is intended to work with an open-source emulator that provides sufficient control over:
+First target: **Sega Genesis / Mega Drive** (concept centers on games like *Streets of Rage*). The emulator layer is abstracted so other cores/consoles can be added without touching matchmaking.
 
-* Controller input
-* Frame advancement/timing
-* Emulator initialization
-* ROM loading
-* Deterministic execution
-* Potentially save states or emulator state inspection
-
-The first implementation will target **Sega Genesis / Mega Drive** because the original project concept focuses on games such as *Streets of Rage*.
-
-The emulator layer should be abstracted so that another emulator or console can be integrated later.
-
-```text
-              Multiplayer Core
-                     │
-                     ▼
-             IEmulatorAdapter
-                /          \
-               /            \
-      Genesis Adapter    Future Adapter
-           │
-           ▼
-      Genesis Emulator
-```
-
-## 📡 Input Synchronization
-
-A network message could conceptually contain:
-
-```json
-{
-  "sessionId": "abc123",
-  "playerId": 2,
-  "frame": 10542,
-  "buttons": ["RIGHT", "A"]
-}
-```
-
-The actual protocol is not finalized yet.
-
-Important design considerations include:
-
-* Input delay
-* Packet loss
-* Out-of-order packets
-* Frame synchronization
-* Late inputs
-* Reconnection
-* Determinism validation
-* Rollback/resimulation
-
-## 🔄 Possible Synchronization Models
-
-### Lockstep
-
-Every emulator waits until the required inputs for a frame are available.
-
-```text
-Frame N
- ├── Player 1 input
- └── Player 2 input
-        ↓
-   Advance Frame
-```
-
-**Advantages**
-
-* Simple conceptual model
-* Highly deterministic
-* Low bandwidth
-
-**Disadvantages**
-
-* Network latency can directly affect gameplay
-* One delayed player can stall everyone
-
-### Input Delay
-
-Inputs are intentionally delayed by a small number of frames.
-
-```text
-Current Frame: 1000
-
-Inputs received:
-P1 → Frame 1005
-P2 → Frame 1005
-
-Both emulators execute frame 1005
-```
-
-This can make synchronization more predictable while hiding some network jitter.
-
-### Rollback
-
-Each client predicts inputs and later corrects the simulation when authoritative input arrives.
-
-```text
-Predict
-   ↓
-Simulate
-   ↓
-Remote input arrives
-   ↓
-Rollback
-   ↓
-Apply correct input
-   ↓
-Resimulate
-```
-
-Rollback may provide a better experience for latency-sensitive games, but it requires deeper emulator integration and reliable deterministic execution.
-
-The project will initially favor **lockstep/input synchronization** before introducing rollback complexity.
+Phase 0 audits whether EmulatorJS / the core give us enough control over: ROM loading from `<input type=file>`, programmatic input injection, frame counter + stepped advance, save/load state, deterministic execution. See [docs/README.md](docs/README.md).
 
 ## 🔐 ROM Ownership
 
-This project is designed around a model where players provide and run their **own legally obtained ROMs**.
+Players supply their **own legally obtained ROMs**. The server receives only a **SHA-256 hash** and rejects a session when the two players' hashes differ (region / revision / modified ROM) — the usual source of mysterious desync. No copyrighted ROMs are hosted or distributed.
 
-The multiplayer infrastructure should not require the server to distribute copyrighted ROM files.
+## 🔄 Synchronization Models
 
-The server should instead coordinate a session between clients that already have compatible game data locally.
+Introduced in order, only as needed:
+
+1. **Input delay** — inputs applied a few frames late to hide jitter.
+2. **Frame acknowledgements** — "I have inputs through frame N".
+3. **Prediction** — repeat last remote input when one is missing.
+4. **Rollback** — save state → predict → re-simulate on arrival. Only if the core supports the required state manipulation.
+
+Lockstep + input delay first; rollback is a later phase.
+
+## 🗺️ Roadmap
+
+Full tracking issue: [#17 Roadmap & Scrum tracking](../../issues/17). Backlog: [docs/BACKLOG.md](docs/BACKLOG.md).
+
+| Phase | Focus |
+|------|-------|
+| 0 | Technical audit of EmulatorJS / EmulatorJS-Netplay / playtime + licensing |
+| 1 | Minimal client: select ROM, load core, play |
+| 2 | Input abstraction (`InputManager` + `ControllerState`) |
+| 3 | Prove frame control (frame counter + stepped advance) |
+| 4 | Determinism test — identical state hashes across two instances |
+| 5 | Frame-based input protocol |
+| 6 | WebSocket input relay MVP (ASP.NET Core) |
+| 7 | `GameSession` backend + state machine + ROM-hash verification |
+| 8 | WebRTC gameplay + signaling + Docker infra |
+| 9 | Latency handling (delay → acks → prediction → rollback) |
+| 10 | Desync detection (periodic state-hash exchange) |
+| 11 | User experience flow |
+
+**Delivery milestones:** M0 identical state hashes across two browsers · M1 WebSocket frame inputs · M2 real two-player Genesis game · M3 WebRTC gameplay · M4 matchmaking · M5 production platform.
+
+Scrum: each phase is a GitHub Milestone = one sprint.
 
 ## 🏗️ Project Structure
 
-The project is expected to evolve toward something similar to:
-
 ```text
-Emulator-Multiplayer/
-│
+Emulator-Online-Multiplayer/
 ├── src/
-│   ├── Server/
-│   │   ├── Session
-│   │   ├── Networking
-│   │   └── Synchronization
-│   │
-│   ├── Client/
-│   │   ├── Networking
-│   │   ├── Input
-│   │   └── Session
-│   │
-│   ├── Emulator/
-│   │   ├── Abstractions
-│   │   └── Genesis
-│   │
-│   └── Protocol/
-│       ├── Messages
-│       └── Serialization
-│
+│   ├── Client/       browser client host
+│   ├── Server/       ASP.NET Core — API, sessions, signaling, relay
+│   ├── Emulator/     emulator abstraction (adapters per core)
+│   └── Protocol/     wire messages + serialization
 ├── tests/
-│
-├── docs/
-│
-└── README.md
+│   ├── Architecture.Tests/   layering / plane-boundary rules
+│   ├── Unit.Tests/           domain, protocol, input merge
+│   ├── Integration.Tests/    ASP.NET Core, EF Core, relay
+│   └── E2E.Tests/            browser-driven two-client flows
+├── docs/            architecture, protocol, audit findings, backlog
+└── research/        reference clones for the Phase 0 audit (git-ignored)
 ```
 
-The exact structure may change as implementation progresses.
+## 🧰 Planned Stack
+
+ASP.NET Core · SignalR · EF Core · PostgreSQL / SQL Server · Redis · coturn (TURN) · EmulatorJS + libretro Genesis core. `docker-compose` for infrastructure once the prototype works. Not before it's needed: React frontend, mobile, payments, chat, friends, leaderboards, microservices, k8s, custom emulator.
 
 ## 🚧 Current Status
 
-**Early research / prototype phase**
+**Sprint 1 — Phase 0 (technical investigation).** Repo scaffold in place; auditing the building-block repos before writing platform code.
 
-Current focus:
+## ⚠️ Biggest Risks
 
-* [x] Define the multiplayer concept
-* [x] Identify input synchronization as the primary networking mechanism
-* [x] Define local-emulator architecture
-* [ ] Select an appropriate open-source emulator
-* [ ] Build emulator adapter
-* [ ] Create basic client/server connection
-* [ ] Implement lobby/session system
-* [ ] Implement controller input synchronization
-* [ ] Implement frame synchronization
-* [ ] Test deterministic execution
-* [ ] Test with a real Genesis multiplayer game
-* [ ] Handle latency and packet loss
-* [ ] Investigate rollback synchronization
-
-## 🧪 Prototype Goal
-
-The first successful prototype should be extremely small:
-
-```text
-Player 1                         Player 2
-   │                                │
-   │ Local Emulator                 │ Local Emulator
-   │ Local ROM                      │ Local ROM
-   │                                │
-   └──────────┐          ┌──────────┘
-              ▼          ▼
-             Multiplayer
-                Server
-                  │
-                  ▼
-          Synchronize Inputs
-```
-
-The first milestone is **not** a complete multiplayer platform.
-
-It is simply:
-
-> Run the same Genesis game on two computers and successfully synchronize both players' controller inputs so that both emulators remain synchronized.
-
-Once this works reliably, additional features can be built on top of it.
-
-## 🔮 Future Ideas
-
-Potential future features include:
-
-* Game/session browser
-* Private rooms
-* Matchmaking
-* Player invitations
-* NAT traversal
-* Dedicated servers
-* Spectator mode
-* Replay recording
-* Input recording
-* Desync detection
-* Automatic emulator configuration
-* Multiple console/emulator adapters
-* Rollback netcode
-* Host migration
-* Latency measurement
-* Cross-platform clients
-
-## ⚠️ Challenges
-
-The biggest technical challenge is **determinism**.
-
-Two emulator instances must produce equivalent results from the same initial state and input sequence.
-
-Potential sources of desynchronization include:
-
-* Different emulator versions
-* Different emulator configurations
-* Different ROM revisions
-* Timing differences
-* Random number generation
-* CPU emulation differences
-* Audio/video timing
-* Uninitialized emulator state
-* Incorrect input-frame alignment
-
-Therefore, emulator compatibility and deterministic execution will be treated as first-class concerns.
+Emulator control (input + frames) · determinism across two browser instances · save-state access for rollback · WebRTC behind NAT · licensing (EmulatorJS + core + Netplay), especially for commercial use.
 
 ## 📜 License
 
-The project license will be defined once the initial architecture and dependencies are established.
-
-Individual emulators and game ROMs may have their own licenses and legal requirements. This project does not provide copyrighted game ROMs.
-
----
+See [LICENSE](LICENSE). Emulators and ROMs carry their own licenses and legal requirements; this project distributes no copyrighted game ROMs.
 
 ## 🤝 Contributing
 
-Contributions, experiments, emulator integrations, synchronization research, and testing are welcome.
-
-The initial priority is establishing a **minimal deterministic multiplayer prototype** before expanding the system into a complete platform.
-
----
-
-### Project Vision
-
-**Run locally. Synchronize inputs. Play together.**
-
-The long-term goal is to make online multiplayer possible for compatible retro games without requiring players to stream the entire game through a central server.
+Priority is a **minimal deterministic multiplayer prototype** before expanding into a full platform. Synchronization research, emulator integration experiments, and testing are welcome — start from the [roadmap](../../issues/17).
