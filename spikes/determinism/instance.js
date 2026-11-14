@@ -7,6 +7,7 @@ const stats = { iterations: 0, idleIterations: 0, multiStepIterations: 0, stalle
 // Both instances hold at their first frame until the parent releases them together
 let released = false;
 let remoteInput = () => {};
+let localInput = () => {};
 
 function report(type, data) {
     parent.postMessage({ source: "instance", id: cfg ? cfg.id : null, type, ...data }, location.origin);
@@ -43,54 +44,59 @@ function scriptedSource(inject) {
     };
 }
 
-// Live host: local keyboard/gamepad input is not applied at once. It is tagged with a frame
-// `delay` frames ahead, sent to the guest, and applied locally when that frame comes up.
-function hostSource(gm, inject) {
+// Peer modes. Local input is not applied at once: it is tagged with a frame `delay` frames ahead,
+// sent to the peer, and applied by both sides on that frame. With `wait`, a frame only runs once
+// the peer has confirmed its inputs for it (lockstep).
+function peerSource(gm, inject) {
     const pending = [];
     const scheduled = new Map();
-    let lastFrame = -1;
-    gm.functions.simulateInput = (player, button, value) => pending.push([player, button, value]);
-    return (frame) => {
-        // Loop iteration that did not advance the frame: this frame's inputs are already final
-        if (frame === lastFrame) return;
-        lastFrame = frame;
-        const target = frame + cfg.delay;
-        const events = pending.splice(0);
-        if (events.length) scheduled.set(target, events);
-        report("input", { frame: target, events });
-        const due = scheduled.get(frame);
-        if (!due) return;
-        scheduled.delete(frame);
-        for (const [player, button, value] of due) inject(player, button, value);
-    };
-}
-
-// Live guest: lockstep. A frame only runs once the host has confirmed its inputs.
-function guestSource(gm, inject) {
     const received = new Map();
     let confirmedThrough = -1;
-    gm.functions.simulateInput = () => {};
+    let lastSent = -1;
+
+    localInput = (button, value) => {
+        if (cfg.capture) pending.push([cfg.port, button, value]);
+    };
+    // EmulatorJS keyboard/gamepad handlers end up here. Ids above MAX_BUTTON are dropped:
+    // save/load-state and fast-forward hotkeys would change this side only.
+    gm.simulateInput = (player, button, value) => {
+        if (player === 0 && button <= MAX_BUTTON) localInput(button, value);
+    };
     remoteInput = (frame, events) => {
         if (events.length) received.set(frame, events);
         if (frame > confirmedThrough) confirmedThrough = frame;
     };
+    const take = (map, frame) => {
+        const events = map.get(frame) || [];
+        map.delete(frame);
+        return events;
+    };
+
     return (frame) => {
-        if (frame > confirmedThrough) {
+        // Sent once per frame, before any stall, so two waiting peers cannot deadlock
+        if (cfg.capture && frame !== lastSent) {
+            lastSent = frame;
+            const target = frame + cfg.delay;
+            const events = pending.splice(0);
+            if (events.length) scheduled.set(target, events);
+            report("input", { frame: target, events });
+        }
+        if (cfg.wait && frame > confirmedThrough) {
             stats.stalledIterations++;
             return false;
         }
-        const due = received.get(frame);
-        if (!due) return;
-        received.delete(frame);
-        for (const [player, button, value] of due) inject(player, button, value);
+        const mine = take(scheduled, frame);
+        const theirs = take(received, frame);
+        // Same apply order on both sides
+        const ordered = cfg.id === "A" ? mine.concat(theirs) : theirs.concat(mine);
+        for (const [player, button, value] of ordered) inject(player, button, value);
     };
 }
 
 function installFrameHooks(emu) {
     const gm = emu.gameManager;
     const inject = gm.functions.simulateInput;
-    const applyInputs = cfg.mode === "script" ? scriptedSource(inject)
-        : cfg.role === "host" ? hostSource(gm, inject) : guestSource(gm, inject);
+    const applyInputs = cfg.mode === "script" ? scriptedSource(inject) : peerSource(gm, inject);
     let frameBefore = 0;
     let lastHashed = -1;
     let done = false;
@@ -154,5 +160,16 @@ window.addEventListener("message", (e) => {
     if (e.data.type === "boot" && !cfg) boot(e.data);
     if (e.data.type === "go") released = true;
     if (e.data.type === "input") remoteInput(e.data.frame, e.data.events);
+    if (e.data.type === "localInput") localInput(e.data.button, e.data.value);
 });
+
+function onPlayer2Key(e) {
+    const button = P2_KEYS[e.code];
+    if (button === undefined || e.repeat || !cfg || cfg.mode !== "duo") return;
+    const value = e.type === "keydown" ? 1 : 0;
+    if (cfg.port === 1) localInput(button, value);
+    else report("p2key", { button, value });
+}
+window.addEventListener("keydown", onPlayer2Key, true);
+window.addEventListener("keyup", onPlayer2Key, true);
 parent.postMessage({ source: "instance", type: "ready" }, location.origin);

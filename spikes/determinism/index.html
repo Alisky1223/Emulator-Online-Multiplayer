@@ -31,7 +31,8 @@
         <label>ROM (your own file) <input type="file" id="rom" required></label>
         <label>Mode
             <select id="mode">
-                <option value="live">Live — you play on A, B mirrors</option>
+                <option value="duo">Two players — A is player 1, B is player 2</option>
+                <option value="mirror">Mirror — you play on A, B copies</option>
                 <option value="script">Scripted inputs on both</option>
             </select>
         </label>
@@ -61,6 +62,7 @@
             <tbody id="rows"></tbody>
         </table>
     </div>
+    <script src="script.js"></script>
     <script src="harness.js"></script>
 </body>
 </html>

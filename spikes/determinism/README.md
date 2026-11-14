@@ -10,17 +10,22 @@ node spikes/determinism/serve.mjs
 
 Open `http://localhost:8080`, pick your own ROM, press **Run**. Needs internet: EmulatorJS 4.2.3 and the core load from `cdn.emulatorjs.org`. Keep the tab visible; a background tab stops rendering frames.
 
-## Live mode (default)
+## Two players (default)
 
-You play on A; B mirrors.
+A is player 1, B is player 2. Each instance sends only its own pad and waits for the other's inputs before running a frame — the real netcode with same-tab messaging in place of the network.
 
 1. Wait until both screens show the game, then click screen A.
-2. Play with the EmulatorJS keys (arrows, Enter = Start, Z / X / A / S ...) or a gamepad.
-3. Watch B and the status line: **IN SYNC so far** = every checkpoint hash equal, **DESYNC** = states differ.
+2. Player 1: EmulatorJS keys (arrows, Enter = Start, Z / X / S ...) or a gamepad.
+3. Player 2: `I J K L` move, `U O P` buttons, `M` Start. These work while A has focus, so two people can share one keyboard.
+4. Watch the status line: **IN SYNC so far** = every checkpoint hash equal, **DESYNC** = states differ.
 
-How it works: A does not apply your input at once. Each input is tagged with a frame `Input delay` frames ahead, sent to B, and applied by both on that frame. B runs a frame only after A has confirmed that frame's inputs (lockstep). B ignores its own keyboard and gamepad.
+How it works: input is not applied at once. Each press is tagged with a frame `Input delay` frames ahead, sent to the peer, and applied by both on that frame. A frame runs only after the peer has confirmed its inputs for it (lockstep), so if one side stops, both stop.
 
-Do not use the EmulatorJS menu on A for save/load state, restart, fast-forward or rewind: those change A only and will desync, which is expected.
+## Mirror
+
+You play on A; B sends nothing and copies A. B ignores its own keyboard and gamepad.
+
+In both live modes, save/load-state, fast-forward and rewind hotkeys are blocked. Do not use the EmulatorJS menu for save/load state or restart either: those change one side only and will desync, which is expected.
 
 ## Scripted mode
 

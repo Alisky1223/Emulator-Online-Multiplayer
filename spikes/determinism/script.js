@@ -3,6 +3,13 @@
 // RetroPad button ids used by simulate_input
 const PAD = { B: 0, Y: 1, START: 3, UP: 4, DOWN: 5, LEFT: 6, RIGHT: 7, A: 8 };
 const PAD_IDS = Object.values(PAD);
+// Highest digital RetroPad button id; above it are analog axes and EmulatorJS hotkeys
+const MAX_BUTTON = 15;
+// One keyboard, two players: player 2 gets its own keys, picked up whichever screen has focus
+const P2_KEYS = {
+    KeyI: PAD.UP, KeyK: PAD.DOWN, KeyJ: PAD.LEFT, KeyL: PAD.RIGHT,
+    KeyU: PAD.Y, KeyO: PAD.B, KeyP: PAD.A, KeyM: PAD.START
+};
 const DIRECTIONS = [-1, PAD.UP, PAD.DOWN, PAD.LEFT, PAD.RIGHT];
 const HOLD_FRAMES = 8;
 const START_PERIOD = 90;

@@ -10,7 +10,14 @@ const MAX_ROWS = 200;
 let hashes = {};
 let finished = {};
 let started = {};
-let live = false;
+let mode = "duo";
+const CAPTIONS = {
+    duo: {
+        A: "A — Player 1 — click here; arrows, Z X S, Enter",
+        B: "B — Player 2 — IJKL move, U O P buttons, M start"
+    },
+    mirror: { A: "A — you play here (click it first)", B: "B — mirror, input locked" }
+};
 
 function setStatus(text, cls) {
     $("status").textContent = text;
@@ -59,6 +66,7 @@ function updateStatus() {
     }
     result.state = ended ? "pass" : "running";
     if (ended) return setStatus(`IN SYNC — ${summary}`, "pass");
+    const live = mode !== "script";
     setStatus(live ? `IN SYNC so far — ${summary}. Click screen A and play.` : `Running… ${summary}, all equal`, live ? "pass" : "");
 }
 
@@ -67,17 +75,19 @@ window.addEventListener("message", (e) => {
     if (e.origin !== location.origin || !m || m.source !== "instance" || !m.id) return;
     if (m.type === "hash") {
         onHash(m.id, m.frame, m.hash);
-        if (live) $("cap" + m.id).textContent = m.id === "A"
-            ? `A — you play here (click it first) — frame ${m.frame}`
-            : `B — mirror, input locked — frame ${m.frame}, waited ${m.stalled} iterations for A`;
+        if (CAPTIONS[mode]) $("cap" + m.id).textContent = `${CAPTIONS[mode][m.id]} — frame ${m.frame}, waited ${m.stalled}`;
     }
-    if (m.type === "input") $("frameB").contentWindow.postMessage({ type: "input", frame: m.frame, events: m.events }, location.origin);
+    if (m.type === "input") {
+        const peer = $("frame" + (m.id === "A" ? "B" : "A"));
+        peer.contentWindow.postMessage({ type: "input", frame: m.frame, events: m.events }, location.origin);
+    }
+    if (m.type === "p2key") sendPlayer2Key(m.button, m.value);
     if (m.type === "started") {
         started[m.id] = true;
         $("cap" + m.id).textContent = `${m.id} — loaded, waiting for the other instance`;
         if (started.A && started.B) {
             for (const id of IDS) $("frame" + id).contentWindow.postMessage({ type: "go" }, location.origin);
-            if (live) $("frameA").focus();
+            if (mode !== "script") $("frameA").focus();
         }
     }
     if (m.type === "error") { result.errors.push(`${m.id}: ${m.message}`); updateStatus(); }
@@ -89,6 +99,18 @@ window.addEventListener("message", (e) => {
         updateStatus();
     }
 });
+
+function sendPlayer2Key(button, value) {
+    $("frameB").contentWindow.postMessage({ type: "localInput", button, value }, location.origin);
+}
+
+function onPlayer2Key(e) {
+    const button = P2_KEYS[e.code];
+    if (button === undefined || e.repeat || mode !== "duo" || !started.B) return;
+    sendPlayer2Key(button, e.type === "keydown" ? 1 : 0);
+}
+window.addEventListener("keydown", onPlayer2Key);
+window.addEventListener("keyup", onPlayer2Key);
 
 function bootInstance(id, rom, cfg) {
     const frame = $("frame" + id);
@@ -105,10 +127,14 @@ $("form").addEventListener("submit", (e) => {
     e.preventDefault();
     const rom = $("rom").files[0];
     const num = (id) => parseInt($(id).value, 10);
-    live = $("mode").value === "live";
+    mode = $("mode").value;
+    const live = mode !== "script";
+    const duo = mode === "duo";
     const cfg = {
-        mode: live ? "live" : "script",
-        role: "host",
+        mode,
+        capture: true,
+        wait: duo,
+        port: 0,
         delay: num("delay"),
         core: $("core").value,
         seed: num("seed") | 0,
@@ -123,13 +149,13 @@ $("form").addEventListener("submit", (e) => {
     hashes = { A: new Map(), B: new Map() };
     finished = {};
     started = {};
-    $("frameB").style.pointerEvents = live ? "none" : "";
+    $("frameB").style.pointerEvents = mode === "mirror" ? "none" : "";
     Object.assign(result, { state: "running", compared: 0, mismatches: 0, firstMismatch: null, lastFrame: 0, stats: {}, errors: [] });
     $("rows").textContent = "";
     setStatus("Booting two instances…");
 
     bootInstance("A", rom, cfg);
-    bootInstance("B", rom, { ...cfg, role: "guest", perturbFrame: perturb, muted: true });
+    bootInstance("B", rom, { ...cfg, capture: duo, wait: live, port: 1, perturbFrame: perturb, muted: true });
 });
 
-$("mode").addEventListener("change", () => $("form").classList.toggle("live", $("mode").value === "live"));
+$("mode").addEventListener("change", () => $("form").classList.toggle("live", $("mode").value !== "script"));
