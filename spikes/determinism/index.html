@@ -22,12 +22,20 @@
         th, td { padding: 2px 10px; text-align: left; border-bottom: 1px solid #222; }
         tr.diff td { color: #f66; }
         #log { max-height: 320px; overflow: auto; }
+        form.live .script-only, form:not(.live) .live-only { display: none; }
     </style>
 </head>
 <body>
-    <h1>Determinism spike — two instances, same ROM, same scripted inputs</h1>
-    <form id="form">
+    <h1>Determinism spike — two instances, same ROM, same inputs</h1>
+    <form id="form" class="live">
         <label>ROM (your own file) <input type="file" id="rom" required></label>
+        <label>Mode
+            <select id="mode">
+                <option value="live">Live — you play on A, B mirrors</option>
+                <option value="script">Scripted inputs on both</option>
+            </select>
+        </label>
+        <label class="live-only">Input delay (frames) <input type="number" id="delay" value="2" min="1" max="30"></label>
         <label>Core
             <select id="core">
                 <option value="segaMD">Genesis / Mega Drive</option>
@@ -35,11 +43,11 @@
                 <option value="nes">NES</option>
             </select>
         </label>
-        <label>Seed <input type="number" id="seed" value="1234"></label>
-        <label>Frames <input type="number" id="frames" value="6000" min="60"></label>
+        <label class="script-only">Seed <input type="number" id="seed" value="1234"></label>
+        <label class="script-only">Frames <input type="number" id="frames" value="6000" min="60"></label>
         <label>Hash every <input type="number" id="hashEvery" value="60" min="1"></label>
-        <label>Press Start until frame <input type="number" id="startUntil" value="1800" min="0"></label>
-        <label>Perturb B at frame (blank = off) <input type="number" id="perturbFrame" min="0"></label>
+        <label class="script-only">Press Start until frame <input type="number" id="startUntil" value="1800" min="0"></label>
+        <label class="script-only">Perturb B at frame (blank = off) <input type="number" id="perturbFrame" min="0"></label>
         <button type="submit" id="run">Run</button>
     </form>
     <div id="status">Pick a ROM and press Run.</div>

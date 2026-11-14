@@ -6,8 +6,11 @@ const result = window.__result = {
     state: "idle", compared: 0, mismatches: 0, firstMismatch: null, lastFrame: 0, stats: {}, errors: []
 };
 
+const MAX_ROWS = 200;
 let hashes = {};
 let finished = {};
+let started = {};
+let live = false;
 
 function setStatus(text, cls) {
     $("status").textContent = text;
@@ -24,13 +27,15 @@ function addRow(frame, a, b) {
         tr.appendChild(td);
     }
     $("rows").prepend(tr);
+    if ($("rows").children.length > MAX_ROWS) $("rows").lastChild.remove();
 }
 
 function onHash(id, frame, hash) {
     hashes[id].set(frame, hash);
-    const other = hashes[id === "A" ? "B" : "A"].get(frame);
-    if (other === undefined) return;
+    if (!hashes.A.has(frame) || !hashes.B.has(frame)) return;
     const a = hashes.A.get(frame), b = hashes.B.get(frame);
+    hashes.A.delete(frame);
+    hashes.B.delete(frame);
     result.compared++;
     result.lastFrame = Math.max(result.lastFrame, frame);
     if (a !== b) {
@@ -53,14 +58,28 @@ function updateStatus() {
         return setStatus(`DESYNC — first differing checkpoint at frame ${result.firstMismatch} (${summary})`, "fail");
     }
     result.state = ended ? "pass" : "running";
-    setStatus(ended ? `IN SYNC — ${summary}` : `Running… ${summary}, all equal`, ended ? "pass" : "");
+    if (ended) return setStatus(`IN SYNC — ${summary}`, "pass");
+    setStatus(live ? `IN SYNC so far — ${summary}. Click screen A and play.` : `Running… ${summary}, all equal`, live ? "pass" : "");
 }
 
 window.addEventListener("message", (e) => {
     const m = e.data;
     if (e.origin !== location.origin || !m || m.source !== "instance" || !m.id) return;
-    if (m.type === "hash") onHash(m.id, m.frame, m.hash);
-    if (m.type === "started") $("cap" + m.id).textContent = `${m.id} — started at frame ${m.frame}`;
+    if (m.type === "hash") {
+        onHash(m.id, m.frame, m.hash);
+        if (live) $("cap" + m.id).textContent = m.id === "A"
+            ? `A — you play here (click it first) — frame ${m.frame}`
+            : `B — mirror, input locked — frame ${m.frame}, waited ${m.stalled} iterations for A`;
+    }
+    if (m.type === "input") $("frameB").contentWindow.postMessage({ type: "input", frame: m.frame, events: m.events }, location.origin);
+    if (m.type === "started") {
+        started[m.id] = true;
+        $("cap" + m.id).textContent = `${m.id} — loaded, waiting for the other instance`;
+        if (started.A && started.B) {
+            for (const id of IDS) $("frame" + id).contentWindow.postMessage({ type: "go" }, location.origin);
+            if (live) $("frameA").focus();
+        }
+    }
     if (m.type === "error") { result.errors.push(`${m.id}: ${m.message}`); updateStatus(); }
     if (m.type === "done") {
         finished[m.id] = true;
@@ -86,10 +105,14 @@ $("form").addEventListener("submit", (e) => {
     e.preventDefault();
     const rom = $("rom").files[0];
     const num = (id) => parseInt($(id).value, 10);
+    live = $("mode").value === "live";
     const cfg = {
+        mode: live ? "live" : "script",
+        role: "host",
+        delay: num("delay"),
         core: $("core").value,
         seed: num("seed") | 0,
-        frames: num("frames"),
+        frames: live ? 0 : num("frames"),
         hashEvery: num("hashEvery"),
         startUntil: num("startUntil"),
         perturbFrame: -1,
@@ -99,10 +122,14 @@ $("form").addEventListener("submit", (e) => {
 
     hashes = { A: new Map(), B: new Map() };
     finished = {};
+    started = {};
+    $("frameB").style.pointerEvents = live ? "none" : "";
     Object.assign(result, { state: "running", compared: 0, mismatches: 0, firstMismatch: null, lastFrame: 0, stats: {}, errors: [] });
     $("rows").textContent = "";
     setStatus("Booting two instances…");
 
     bootInstance("A", rom, cfg);
-    bootInstance("B", rom, { ...cfg, perturbFrame: perturb, muted: true });
+    bootInstance("B", rom, { ...cfg, role: "guest", perturbFrame: perturb, muted: true });
 });
+
+$("mode").addEventListener("change", () => $("form").classList.toggle("live", $("mode").value === "live"));
