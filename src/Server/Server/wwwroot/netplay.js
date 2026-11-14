@@ -87,6 +87,7 @@ function onHello(m) {
             + "Both players need the exact same ROM file (same region and revision). Reload and try again.");
     }
     net.delay = net.player === 1 ? local.delay : m.delay;
+    $("delay").value = net.delay;
     boot();
 }
 
