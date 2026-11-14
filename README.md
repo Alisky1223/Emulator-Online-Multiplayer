@@ -120,6 +120,7 @@ Emulator-Online-Multiplayer/
 │   ├── Integration.Tests/    ASP.NET Core, EF Core, relay
 │   └── E2E.Tests/            browser-driven two-client flows
 ├── docs/            architecture, protocol, audit findings, backlog
+├── spikes/          throwaway experiments (determinism harness, #22)
 └── research/        reference clones for the Phase 0 audit (git-ignored)
 ```
 

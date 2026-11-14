@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Determinism spike</title>
+    <style>
+        body { margin: 16px; background: #111; color: #ddd; font: 14px/1.4 system-ui, sans-serif; }
+        h1 { font-size: 18px; margin: 0 0 12px; }
+        form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 12px; }
+        label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #999; }
+        input, select, button { background: #222; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 6px 8px; font: inherit; }
+        input[type=number] { width: 90px; }
+        button { cursor: pointer; }
+        #status { font-weight: 600; margin: 8px 0; }
+        #status.pass { color: #5c5; }
+        #status.fail { color: #f66; }
+        #screens { display: flex; gap: 12px; flex-wrap: wrap; }
+        #screens figure { margin: 0; flex: 1 1 320px; }
+        #screens figcaption { font-size: 12px; color: #999; margin-bottom: 4px; }
+        iframe { width: 100%; aspect-ratio: 4 / 3; border: 1px solid #333; background: #000; }
+        table { border-collapse: collapse; margin-top: 12px; font: 12px ui-monospace, Consolas, monospace; }
+        th, td { padding: 2px 10px; text-align: left; border-bottom: 1px solid #222; }
+        tr.diff td { color: #f66; }
+        #log { max-height: 320px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>Determinism spike — two instances, same ROM, same scripted inputs</h1>
+    <form id="form">
+        <label>ROM (your own file) <input type="file" id="rom" required></label>
+        <label>Core
+            <select id="core">
+                <option value="segaMD">Genesis / Mega Drive</option>
+                <option value="snes">SNES</option>
+                <option value="nes">NES</option>
+            </select>
+        </label>
+        <label>Seed <input type="number" id="seed" value="1234"></label>
+        <label>Frames <input type="number" id="frames" value="6000" min="60"></label>
+        <label>Hash every <input type="number" id="hashEvery" value="60" min="1"></label>
+        <label>Press Start until frame <input type="number" id="startUntil" value="1800" min="0"></label>
+        <label>Perturb B at frame (blank = off) <input type="number" id="perturbFrame" min="0"></label>
+        <button type="submit" id="run">Run</button>
+    </form>
+    <div id="status">Pick a ROM and press Run.</div>
+    <div id="screens">
+        <figure><figcaption id="capA">A</figcaption><iframe id="frameA" allow="autoplay"></iframe></figure>
+        <figure><figcaption id="capB">B (muted)</figcaption><iframe id="frameB" allow="autoplay"></iframe></figure>
+    </div>
+    <div id="log">
+        <table>
+            <thead><tr><th>frame</th><th>hash A</th><th>hash B</th><th></th></tr></thead>
+            <tbody id="rows"></tbody>
+        </table>
+    </div>
+    <script src="harness.js"></script>
+</body>
+</html>
