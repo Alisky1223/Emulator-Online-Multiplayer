@@ -8,6 +8,18 @@ Sprint = GitHub Milestone = one roadmap phase. Item IDs below are GitHub issue n
 
 Prove the hardest technical assumptions first (frame control, determinism). Product and infrastructure work only after the netcode core is proven. Nothing in "Not now" gets built before M2.
 
+## Determinism assumptions
+
+Game AI and in-game randomness are emulated state (RNG value in RAM, fed by frame counter + inputs). Same ROM + same starting state + same inputs on the same frames → same AI behaviour on both sides. What actually breaks sync, and where it is handled:
+
+| Source | Handled in |
+|---|---|
+| Different starting state (power-on RAM, SRAM) | #9 |
+| Inputs applied on different frames | #5, #7 |
+| Different core build / core options | #10 |
+| Cartridge real-time clock (not Genesis) | per-platform, later |
+| Anything missed | #15 detect + resync |
+
 ## Sprint 1 — Phase 0: Technical Investigation
 
 Goal: know whether the approach is feasible before building it.
@@ -18,6 +30,7 @@ Goal: know whether the approach is feasible before building it.
 | 2 | Licensing audit | EmulatorJS + Genesis core + Netplay + libs; commercial obligations. Output: `docs/LICENSING.md` |
 | 18 | Repo scaffolding | ✅ done — `docs/`, `research/`, test projects |
 | 20 | Update README + this backlog | ✅ done |
+| 22 | Spike: frame control + determinism harness | Two EmulatorJS instances on one machine, scripted inputs, state-hash compare. Early go/no-go for #5 + #6. Code: `spikes/determinism/` |
 
 Exit criteria: documented answers to the emulator / netplay / browser questions in #1; go/no-go on frame control and determinism.
 
@@ -47,7 +60,7 @@ Risk item. If unachievable, stop and re-investigate the core.
 
 | # | Item |
 |---|------|
-| 6 | Two instances, same ROM + state + scripted inputs → identical periodic state hashes |
+| 6 | Two instances, same ROM + state + scripted inputs → identical periodic state hashes. Must run on a co-op game with AI enemies (RNG is emulated state, so it must stay in sync too) + negative control |
 
 **M0** = state hashes match across two browsers through several thousand frames.
 
@@ -69,8 +82,8 @@ Risk item. If unachievable, stop and re-investigate the core.
 
 | # | Item |
 |---|------|
-| 9 | `GameSession` entity + state machine (Waiting → … → Running → Finished); backend scaffold (API/Application/Domain/Infrastructure, SignalR, EF Core, Postgres) |
-| 10 | ROM identification via SHA-256; reject hash mismatch |
+| 9 | `GameSession` entity + state machine (Waiting → … → Running → Finished); backend scaffold (API/Application/Domain/Infrastructure, SignalR, EF Core, Postgres). `Synchronizing` establishes an identical starting state: clean or host SRAM, optional host savestate, start-state hashes equal before `Running` |
+| 10 | ROM identification via SHA-256; reject hash mismatch. Also emulator fingerprint: core, core version, sync-relevant options hash |
 | 11 | Generic `Game` entity (Id, Name, Platform, RomHash, EmulatorCore, InputProfile) |
 
 **M2** = two browsers play a real two-player Genesis game together.
@@ -90,11 +103,11 @@ Risk item. If unachievable, stop and re-investigate the core.
 |---|------|
 | 14 | V1 input delay → V2 frame acks → V3 prediction → V4 rollback (rollback only if core supports state manipulation) |
 
-## Sprint 11 — Phase 10: Desync Detection
+## Sprint 11 — Phase 10: Desync Detection + Resync
 
 | # | Item |
 |---|------|
-| 15 | Periodic `{ frame, stateHash }` exchange; flag + abort on divergence |
+| 15 | Periodic `{ frame, stateHash }` exchange; on divergence host sends savestate and both resume; abort only after repeated failures |
 
 ## Sprint 12 — Phase 11: User Experience → **M4**
 
