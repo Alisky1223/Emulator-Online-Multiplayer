@@ -74,7 +74,7 @@ Risk item. If unachievable, stop and re-investigate the core.
 
 | # | Item |
 |---|------|
-| 8 | ASP.NET Core WebSocket relay A↔B for frame inputs |
+| 8 | ASP.NET Core WebSocket relay A↔B for frame inputs. Code: `src/Server/Server/` (relay + client in `wwwroot/`), messages in `docs/PROTOCOL.md`, results in `docs/PHASE0.md` |
 
 **M1** = two browsers exchange frame-based inputs over WebSocket.
 
