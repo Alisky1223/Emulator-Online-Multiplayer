@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Emulator Online Multiplayer</title>
+    <style>
+        body { margin: 16px; background: #111; color: #ddd; font: 14px/1.4 system-ui, sans-serif; }
+        h1 { font-size: 18px; margin: 0 0 12px; }
+        form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 12px; }
+        label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #999; }
+        input, select, button { background: #222; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 6px 8px; font: inherit; }
+        input[type=number] { width: 70px; }
+        input#room { width: 120px; text-transform: uppercase; }
+        button { cursor: pointer; }
+        :disabled { opacity: .5; cursor: default; }
+        #status { font-weight: 600; margin: 8px 0 2px; }
+        #status.pass { color: #5c5; }
+        #status.warn { color: #fc5; }
+        #status.fail { color: #f66; }
+        #detail { font: 12px ui-monospace, Consolas, monospace; color: #999; min-height: 1.4em; margin-bottom: 8px; }
+        #game { width: min(100%, 800px); aspect-ratio: 4 / 3; background: #000; border: 1px solid #333; }
+        ul { color: #999; font-size: 12px; padding-left: 18px; max-width: 800px; }
+    </style>
+</head>
+<body>
+    <h1>Emulator Online Multiplayer — two players, WebSocket relay</h1>
+    <form id="form">
+        <label>Room code (same on both sides) <input id="room" required maxlength="32" pattern="[A-Za-z0-9_\-]+" autocomplete="off"></label>
+        <label>ROM (your own file, same on both sides) <input type="file" id="rom" required></label>
+        <label>Core
+            <select id="core">
+                <option value="segaMD">Genesis / Mega Drive</option>
+                <option value="snes">SNES</option>
+                <option value="nes">NES</option>
+            </select>
+        </label>
+        <label title="Player 1's value is used by both sides">Input delay (frames) <input type="number" id="delay" value="3" min="1" max="30"></label>
+        <button type="submit" id="join">Join</button>
+    </form>
+    <div id="status">Enter a room code, pick your ROM and press Join.</div>
+    <div id="detail"></div>
+    <div id="game"></div>
+    <ul>
+        <li>First to join a room is player 1, second is player 2. Both use the normal EmulatorJS keys (arrows, Enter = Start, Z / X / S ...) or a gamepad on their own machine. Click the game screen first.</li>
+        <li>Keep this tab visible: a hidden or minimised tab stops rendering frames, which pauses the game for both players.</li>
+        <li>Do not use save/load state, restart, fast forward, rewind or cheats: they change one side only and cause a desync.</li>
+        <li>Needs internet: EmulatorJS and the core load from <code>cdn.emulatorjs.org</code>. The ROM never leaves your browser; only a hash of it is compared.</li>
+    </ul>
+    <script src="netplay.js"></script>
+</body>
+</html>
