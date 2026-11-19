@@ -5,12 +5,17 @@ const EJS_DATA = `https://cdn.emulatorjs.org/${EJS_VERSION}/data/`;
 const MAX_BUTTON = 15;
 const HASH_EVERY = 60;
 const STALL_NOTICE_MS = 1000;
+const FRAME_MS = 1000 / 60;
+const MAX_DELAY = 30;
+const PING_SAMPLES = 8;
+const PING_TIMEOUT_MS = 2000;
+const LIVE_PING_MS = 2000;
 
 const $ = (id) => document.getElementById(id);
 
 // Exposed for automated runs
 const net = window.__netplay = {
-    state: "idle", player: 0, delay: 0, frame: 0, startFrame: null, compared: 0, mismatches: 0,
+    state: "idle", player: 0, delay: 0, delaySource: null, measuredRtt: null, rtt: null, frame: 0, startFrame: null, compared: 0, mismatches: 0,
     firstMismatch: null, lastCheckpoint: 0, stalledIterations: 0, peerHidden: false, error: null
 };
 
@@ -19,6 +24,10 @@ let local = null;
 let booted = false;
 let localReady = null;
 let peerReady = null;
+let peerVerified = false;
+let measureRun = 0;
+let pingSeq = 0;
+const pongWaiters = new Map();
 // Both peers hold at their first frame until both have loaded
 let released = false;
 let stallSince = 0;
@@ -72,13 +81,53 @@ function fail(text) {
     if (socket) socket.close();
 }
 
+// Round trip to the peer through the relay; resolves null on timeout
+function ping() {
+    const id = ++pingSeq;
+    const sent = performance.now();
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => { pongWaiters.delete(id); resolve(null); }, PING_TIMEOUT_MS);
+        pongWaiters.set(id, () => {
+            clearTimeout(timer);
+            net.rtt = performance.now() - sent;
+            resolve(net.rtt);
+        });
+        send({ type: "ping", id });
+    });
+}
+
+function onPong(id) {
+    const done = pongWaiters.get(id);
+    pongWaiters.delete(id);
+    if (done) done();
+}
+
+// Sequential, so samples do not queue behind each other. Upper quartile: covers most jitter
+// without letting one spike decide.
+async function measureRtt() {
+    const samples = [];
+    for (let i = 0; i < PING_SAMPLES; i++) {
+        const rtt = await ping();
+        if (rtt !== null) samples.push(rtt);
+    }
+    if (!samples.length) return null;
+    samples.sort((a, b) => a - b);
+    return samples[Math.min(samples.length - 1, Math.floor(samples.length * 0.75))];
+}
+
+// An input sent at frame f is needed by the peer at frame f + delay, so delay frames must cover
+// the one-way trip (half the round trip); +1 frame of headroom for jitter.
+function autoDelay(rtt) {
+    return Math.min(MAX_DELAY, Math.max(1, Math.ceil(rtt / 2 / FRAME_MS) + 1));
+}
+
 function sendHello() {
     net.state = "verifying";
     setStatus(`Player ${net.player} — peer connected, comparing ROMs…`);
-    send({ type: "hello", rom: local.rom, size: local.size, core: local.core, ejs: EJS_VERSION, delay: local.delay });
+    send({ type: "hello", rom: local.rom, size: local.size, core: local.core, ejs: EJS_VERSION });
 }
 
-function onHello(m) {
+async function onHello(m) {
     if (booted) return;
     if (m.ejs !== EJS_VERSION) return fail(`Emulator version mismatch: you ${EJS_VERSION}, peer ${m.ejs}. Reload both pages.`);
     if (m.core !== local.core) return fail(`Core mismatch: you picked ${local.core}, peer picked ${m.core}. Reload and pick the same core.`);
@@ -86,8 +135,34 @@ function onHello(m) {
         return fail(`ROM mismatch — not starting. Yours: ${local.rom} (${local.size} bytes), peer's: ${m.rom} (${m.size} bytes). `
             + "Both players need the exact same ROM file (same region and revision). Reload and try again.");
     }
-    net.delay = net.player === 1 ? local.delay : m.delay;
-    $("delay").value = net.delay;
+    peerVerified = true;
+    if (net.player !== 1) {
+        net.state = "measuring";
+        return setStatus(`Player ${net.player} — ROMs match, player 1 is measuring the ping…`);
+    }
+
+    // Player 1 picks the delay for both
+    const run = ++measureRun;
+    net.state = "measuring";
+    setStatus(`Player ${net.player} — ROMs match, measuring the ping…`);
+    const rtt = await measureRtt();
+    if (run !== measureRun || booted || net.state !== "measuring") return;
+    if (rtt === null) return fail("The peer does not answer pings. Reload both pages and try again.");
+    const delay = local.delay ?? autoDelay(rtt);
+    send({ type: "start", delay, auto: local.delay === null, rtt: Math.round(rtt) });
+    startWith(delay, local.delay === null, rtt);
+}
+
+function onStart(m) {
+    if (net.player === 1 || !peerVerified || booted) return;
+    startWith(m.delay, m.auto, m.rtt);
+}
+
+function startWith(delay, auto, rtt) {
+    net.delay = delay;
+    net.delaySource = auto ? "auto" : "manual";
+    net.measuredRtt = Math.round(rtt);
+    $("delay").value = delay;
     boot();
 }
 
@@ -223,6 +298,7 @@ function boot() {
 
 function onPeerLeft() {
     if (booted) return fail(`Peer disconnected at frame ${net.frame}. Reload the page to start a new game.`);
+    peerVerified = false;
     net.state = "waiting";
     setStatus(`Player ${net.player} — peer left, waiting for a player to join room ${local.room}…`);
 }
@@ -238,6 +314,9 @@ function onMessage(m) {
         case "peer-left": return onPeerLeft();
         case "rejected": return fail(m.message);
         case "hello": return onHello(m);
+        case "start": return onStart(m);
+        case "ping": return send({ type: "pong", id: m.id });
+        case "pong": return onPong(m.id);
         case "ready":
             peerReady = { frame: m.frame, hash: m.hash };
             return tryStart();
@@ -285,12 +364,17 @@ function render() {
     } else {
         setStatus(`IN SYNC — ${role}, ${summary}`, "pass");
     }
-    $("detail").textContent = `room ${local.room} · frame ${net.frame} · input delay ${net.delay} · waited ${net.stalledIterations} iterations`;
+    const ping = net.rtt === null ? "–" : Math.round(net.rtt);
+    // The delay only hides half a round trip; above that every frame waits
+    const short = net.rtt !== null && net.rtt / 2 > net.delay * FRAME_MS ? " (too low for this ping)" : "";
+    $("detail").textContent = `room ${local.room} · frame ${net.frame} · input delay ${net.delay} ${net.delaySource}${short}`
+        + ` (start ping ${net.measuredRtt} ms) · ping ${ping} ms · waited ${net.stalledIterations} iterations`;
 }
 
 window.addEventListener("error", (e) => { if (booted) fail("Error: " + e.message); });
 document.addEventListener("visibilitychange", () => send({ type: "hidden", hidden: document.hidden }));
 setInterval(render, 250);
+setInterval(() => { if (net.state === "running") ping(); }, LIVE_PING_MS);
 
 $("room").value = new URLSearchParams(location.search).get("room") || "";
 $("form").addEventListener("submit", async (e) => {
@@ -300,7 +384,8 @@ $("form").addEventListener("submit", async (e) => {
     local = {
         room: $("room").value.trim().toUpperCase(),
         core: $("core").value,
-        delay: parseInt($("delay").value, 10),
+        // Empty = auto
+        delay: $("delay").value.trim() === "" ? null : Math.min(MAX_DELAY, Math.max(1, parseInt($("delay").value, 10))),
         file,
         size: file.size,
         rom: null
