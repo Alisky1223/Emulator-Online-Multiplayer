@@ -1,41 +1,51 @@
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using Server.Relay;
+
+const int DefaultPort = 5279;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+// All interfaces, so a second machine on the LAN can connect
+if (string.IsNullOrEmpty(builder.Configuration["urls"]))
+    builder.WebHost.UseUrls($"http://0.0.0.0:{DefaultPort}");
+
+builder.Services.AddSingleton<RelayHub>();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+app.UseWebSockets(new WebSocketOptions
 {
-    app.MapOpenApi();
-}
+    // Detects a peer that vanished without closing (cable pulled, machine asleep)
+    KeepAliveInterval = TimeSpan.FromSeconds(5),
+    KeepAliveTimeout = TimeSpan.FromSeconds(15)
+});
 
-app.UseHttpsRedirection();
-
-var summaries = new[]
+app.UseDefaultFiles();
+app.UseStaticFiles(new StaticFileOptions
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-store"
+});
 
-app.MapGet("/weatherforecast", () =>
+app.Map("/ws", WebSocketRelay.HandleAsync);
+
+app.Lifetime.ApplicationStarted.Register(() =>
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+    var port = app.Urls.Select(url => new Uri(url.Replace("0.0.0.0", "localhost").Replace("[::]", "localhost")).Port)
+        .DefaultIfEmpty(DefaultPort).First();
+    var lanAddresses = NetworkInterface.GetAllNetworkInterfaces()
+        .Where(nic => nic.OperationalStatus == OperationalStatus.Up && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+        .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
+        .Where(address => address.Address.AddressFamily == AddressFamily.InterNetwork)
+        .Select(address => address.Address.ToString());
+
+    Console.WriteLine();
+    Console.WriteLine($"  This PC:        http://localhost:{port}");
+    foreach (var address in lanAddresses)
+        Console.WriteLine($"  Other machines: http://{address}:{port}");
+    Console.WriteLine();
+});
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+public partial class Program;

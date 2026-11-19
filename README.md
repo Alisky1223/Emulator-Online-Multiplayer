@@ -124,13 +124,33 @@ Emulator-Online-Multiplayer/
 └── research/        reference clones for the Phase 0 audit (git-ignored)
 ```
 
+## ▶️ Run it (two players over WebSocket, M1)
+
+One PC runs the server; it also serves the browser client. Needs the .NET 10 SDK, and internet on both machines (EmulatorJS loads from `cdn.emulatorjs.org`).
+
+```
+dotnet run --project src/Server/Server
+```
+
+The server listens on port **5279** on all interfaces and prints the URLs to open.
+
+1. On the server PC open `http://localhost:5279`.
+2. On the second machine (same LAN) open `http://<server-PC-LAN-IP>:5279`, e.g. `http://192.168.1.6:5279`. The server prints its addresses at start; otherwise run `ipconfig` on the server PC and take the **IPv4 Address** of the Wi-Fi / Ethernet adapter.
+3. The first time, Windows Firewall may ask whether to allow the server: allow it on **private networks**. If the second machine cannot connect, that prompt was dismissed; allow inbound TCP 5279 by hand.
+4. On both: type the same room code, pick the same ROM file (your own copy on each machine), press **Join**. First to join is player 1, second is player 2.
+5. When both emulators have loaded the game starts on both. Click the game screen and play with the normal EmulatorJS keys or a gamepad. The status line shows **IN SYNC** or **DESYNC**.
+
+Two browser windows on one PC work too (both on `http://localhost:5279`), but keep both windows visible side by side: a hidden or minimised tab stops rendering frames and pauses the game for both players.
+
+Do not use save/load state, restart, fast forward, rewind or cheats; they change one side only. Wire messages: [docs/PROTOCOL.md](docs/PROTOCOL.md). What was tested: [docs/PHASE0.md](docs/PHASE0.md).
+
 ## 🧰 Planned Stack
 
 ASP.NET Core · SignalR · EF Core · PostgreSQL / SQL Server · Redis · coturn (TURN) · EmulatorJS + libretro Genesis core. `docker-compose` for infrastructure once the prototype works. Not before it's needed: React frontend, mobile, payments, chat, friends, leaderboards, microservices, k8s, custom emulator.
 
 ## 🚧 Current Status
 
-**Sprint 1 — Phase 0 (technical investigation).** Repo scaffold in place; auditing the building-block repos before writing platform code.
+Determinism spike done (#22). WebSocket relay MVP (#8, M1) works: two browsers play in lockstep through the ASP.NET Core relay; verified with two browser instances on one PC, not yet on two physical machines. See [docs/PHASE0.md](docs/PHASE0.md).
 
 ## ⚠️ Biggest Risks
 
