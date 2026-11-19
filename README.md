@@ -140,6 +140,17 @@ The server listens on port **5279** on all interfaces and prints the URLs to ope
 4. On both: type the same room code, pick the same ROM file (your own copy on each machine), press **Join**. First to join is player 1, second is player 2.
 5. When both emulators have loaded the game starts on both. Click the game screen and play with the normal EmulatorJS keys or a gamepad. The status line shows **IN SYNC** or **DESYNC**.
 
+### Over the internet (Cloudflare quick tunnel, free, no account)
+
+Exposes the server on a public `https://….trycloudflare.com` URL; no router or firewall setup.
+
+1. Install once: `winget install --id Cloudflare.cloudflared`
+2. Run the server as above, then in a second terminal: `cloudflared tunnel --url http://localhost:5279`
+3. It prints `https://<random>.trycloudflare.com`. Both players open **that** URL (also the host: then both go through the same path). Send it to your friend; it changes every time cloudflared restarts.
+4. Leave **Input delay** empty (auto): player 1 measures the ping to player 2 before the start and picks the delay (`ceil(ping / 2 / 16.7 ms) + 1` frames). The line under the status shows the delay, the start ping and the live ping, and says when the delay is too low for the current ping. If it stutters, type a higher delay on player 1's side and rejoin.
+
+Quick tunnels are for testing (no uptime guarantee). Traffic goes player → Cloudflare → your PC → Cloudflare → player, so the ping is higher than a direct link.
+
 Two browser windows on one PC work too (both on `http://localhost:5279`), but keep both windows visible side by side: a hidden or minimised tab stops rendering frames and pauses the game for both players.
 
 Do not use save/load state, restart, fast forward, rewind or cheats; they change one side only. Wire messages: [docs/PROTOCOL.md](docs/PROTOCOL.md). What was tested: [docs/PHASE0.md](docs/PHASE0.md).
@@ -150,7 +161,7 @@ ASP.NET Core · SignalR · EF Core · PostgreSQL / SQL Server · Redis · coturn
 
 ## 🚧 Current Status
 
-Determinism spike done (#22). WebSocket relay MVP (#8, M1) works: two browsers play in lockstep through the ASP.NET Core relay; verified with two browser instances on one PC, not yet on two physical machines. See [docs/PHASE0.md](docs/PHASE0.md).
+Determinism spike done (#22). Internet play (auto input delay + Cloudflare tunnel, #25) built, not yet tested with a remote player. WebSocket relay MVP (#8, M1) works: two browsers play in lockstep through the ASP.NET Core relay; verified with two browser instances on one PC, not yet on two physical machines. See [docs/PHASE0.md](docs/PHASE0.md).
 
 ## ⚠️ Biggest Risks
 

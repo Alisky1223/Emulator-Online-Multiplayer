@@ -43,6 +43,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
     Console.WriteLine($"  This PC:        http://localhost:{port}");
     foreach (var address in lanAddresses)
         Console.WriteLine($"  Other machines: http://{address}:{port}");
+    Console.WriteLine($"  Internet:       cloudflared tunnel --url http://localhost:{port}");
     Console.WriteLine();
 });
 
