@@ -140,6 +140,14 @@ The server listens on port **5279** on all interfaces and prints the URLs to ope
 4. On both: type the same room code, pick the same ROM file (your own copy on each machine), press **Join**. First to join is player 1, second is player 2.
 5. When both emulators have loaded the game starts on both. Click the game screen and play with the normal EmulatorJS keys or a gamepad. The status line shows **IN SYNC** or **DESYNC**.
 
+### Over the internet (GitHub Pages + direct WebRTC, recommended)
+
+The client is published to GitHub Pages by `.github/workflows/pages.yml` on every push to `main` that touches `src/Server/Server/wwwroot/` (or run it by hand under **Actions**). No server needed: the two browsers pair through the free PeerJS server and then connect directly.
+
+1. Once: repo **Settings → Pages → Source: GitHub Actions**.
+2. Both players open `https://alisky1223.github.io/Emulator-Online-Multiplayer/`, keep **Connection: Direct (WebRTC)**, type the same room code, pick the same ROM, press **Join**.
+3. The line under the status shows `direct udp` (best) or `relayed via TURN` (a network blocked the direct path; slower).
+
 ### Over the internet (Cloudflare quick tunnel, free, no account)
 
 Exposes the server on a public `https://….trycloudflare.com` URL; no router or firewall setup.

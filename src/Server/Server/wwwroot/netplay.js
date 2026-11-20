@@ -10,16 +10,19 @@ const MAX_DELAY = 30;
 const PING_SAMPLES = 8;
 const PING_TIMEOUT_MS = 2000;
 const LIVE_PING_MS = 2000;
+// Live pings keep messages flowing even while the peer's tab is hidden
+const SILENT_PEER_MS = 15000;
 
 const $ = (id) => document.getElementById(id);
 
 // Exposed for automated runs
 const net = window.__netplay = {
-    state: "idle", player: 0, delay: 0, delaySource: null, measuredRtt: null, rtt: null, frame: 0, startFrame: null, compared: 0, mismatches: 0,
+    state: "idle", player: 0, delay: 0, delaySource: null, measuredRtt: null, rtt: null, transport: null, route: null, frame: 0, startFrame: null, compared: 0, mismatches: 0,
     firstMismatch: null, lastCheckpoint: 0, stalledIterations: 0, peerHidden: false, error: null
 };
 
-let socket = null;
+let transport = null;
+let lastMessageAt = 0;
 let local = null;
 let booted = false;
 let localReady = null;
@@ -69,7 +72,7 @@ function setStatus(text, cls) {
 }
 
 function send(message) {
-    if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+    if (transport) transport.send(message);
 }
 
 // Terminal: the game cannot continue on this page
@@ -78,7 +81,7 @@ function fail(text) {
     net.state = "error";
     net.error = text;
     setStatus(text, "fail");
-    if (socket) socket.close();
+    if (transport) transport.close();
 }
 
 // Round trip to the peer through the relay; resolves null on timeout
@@ -158,7 +161,12 @@ function onStart(m) {
     startWith(m.delay, m.auto, m.rtt);
 }
 
+function refreshRoute() {
+    transport.route().then((route) => { if (route) net.route = route; }, () => {});
+}
+
 function startWith(delay, auto, rtt) {
+    refreshRoute();
     net.delay = delay;
     net.delaySource = auto ? "auto" : "manual";
     net.measuredRtt = Math.round(rtt);
@@ -304,6 +312,7 @@ function onPeerLeft() {
 }
 
 function onMessage(m) {
+    lastMessageAt = performance.now();
     switch (m.type) {
         case "joined":
             net.player = m.player;
@@ -332,19 +341,21 @@ function onMessage(m) {
 
 function connect() {
     net.state = "connecting";
-    setStatus("Connecting…");
-    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    socket = new WebSocket(`${scheme}//${location.host}/ws?room=${encodeURIComponent(local.room)}`);
-    socket.onmessage = (e) => {
-        try {
-            onMessage(JSON.parse(e.data));
-        } catch (err) {
-            fail("Bad message: " + String(err && err.stack || err));
-        }
-    };
-    socket.onclose = () => fail(booted
-        ? `Connection to the server lost at frame ${net.frame}. Reload the page to start a new game.`
-        : "Could not connect to the server, or the connection was lost. Reload and try again.");
+    net.transport = local.transport;
+    setStatus(local.transport === "webrtc" ? "Connecting to the PeerJS pairing server…" : "Connecting…");
+    const open = local.transport === "webrtc" ? openWebRtcTransport : openWebSocketTransport;
+    transport = open(local.room, {
+        onMessage: (m) => {
+            try {
+                onMessage(m);
+            } catch (err) {
+                fail("Bad message: " + String(err && err.stack || err));
+            }
+        },
+        onClosed: (reason) => fail(booted
+            ? `Connection to the other player lost at frame ${net.frame}. Reload the page to start a new game.`
+            : reason || "Could not connect to the server, or the connection was lost. Reload and try again.")
+    });
 }
 
 function render() {
@@ -352,6 +363,9 @@ function render() {
         setStatus(`Player ${net.player} — emulator loaded, waiting for the peer's emulator…`);
     }
     if (net.state !== "running") return;
+    if (!document.hidden && performance.now() - lastMessageAt > SILENT_PEER_MS) {
+        return fail(`Nothing heard from the other player for ${SILENT_PEER_MS / 1000} s at frame ${net.frame}. Reload the page to start a new game.`);
+    }
     const role = `Player ${net.player} (pad ${net.player})`;
     const summary = `${net.compared} checkpoints compared, through frame ${net.lastCheckpoint}`;
     const waited = stallSince ? performance.now() - stallSince : 0;
@@ -367,15 +381,21 @@ function render() {
     const ping = net.rtt === null ? "–" : Math.round(net.rtt);
     // The delay only hides half a round trip; above that every frame waits
     const short = net.rtt !== null && net.rtt / 2 > net.delay * FRAME_MS ? " (too low for this ping)" : "";
-    $("detail").textContent = `room ${local.room} · frame ${net.frame} · input delay ${net.delay} ${net.delaySource}${short}`
+    $("detail").textContent = `room ${local.room} · ${net.route || net.transport} · frame ${net.frame} · input delay ${net.delay} ${net.delaySource}${short}`
         + ` (start ping ${net.measuredRtt} ms) · ping ${ping} ms · waited ${net.stalledIterations} iterations`;
 }
 
 window.addEventListener("error", (e) => { if (booted) fail("Error: " + e.message); });
 document.addEventListener("visibilitychange", () => send({ type: "hidden", hidden: document.hidden }));
 setInterval(render, 250);
-setInterval(() => { if (net.state === "running") ping(); }, LIVE_PING_MS);
+setInterval(() => {
+    if (net.state !== "running") return;
+    ping();
+    refreshRoute();
+}, LIVE_PING_MS);
 
+// Static hosting (GitHub Pages) has no relay server behind it
+if (location.hostname.endsWith(".github.io")) $("transport").querySelector('[value="relay"]').disabled = true;
 $("room").value = new URLSearchParams(location.search).get("room") || "";
 $("form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -383,6 +403,7 @@ $("form").addEventListener("submit", async (e) => {
     const file = $("rom").files[0];
     local = {
         room: $("room").value.trim().toUpperCase(),
+        transport: $("transport").value,
         core: $("core").value,
         // Empty = auto
         delay: $("delay").value.trim() === "" ? null : Math.min(MAX_DELAY, Math.max(1, parseInt($("delay").value, 10))),
