@@ -31,7 +31,9 @@ Anything a client sends is forwarded as-is to the other peer in the room, and dr
 
 | Message | Meaning |
 |---|---|
-| `{"type":"hello","rom":"c10055e32888ab8b","size":131072,"core":"segaMD","ejs":"4.2.3","delay":3}` | Sent by both once both are in the room. `rom` = 64-bit non-cryptographic hash of the ROM bytes (`hashBytes`, works without a secure context). If `rom`, `size`, `core` or `ejs` differ, both sides refuse to start. `delay` = requested input delay in frames; **player 1's value is used by both** |
+| `{"type":"hello","rom":"c10055e32888ab8b","size":131072,"core":"segaMD","ejs":"4.2.3"}` | Sent by both once both are in the room. `rom` = 64-bit non-cryptographic hash of the ROM bytes (`hashBytes`, works without a secure context). If `rom`, `size`, `core` or `ejs` differ, both sides refuse to start |
+| `{"type":"ping","id":7}` | Round-trip probe. The receiver answers `{"type":"pong","id":7}` at once. Player 1 sends 8 in a row after the hellos match; both send one every 2 s while playing (shown as live ping) |
+| `{"type":"start","delay":4,"auto":true,"rtt":96}` | Player 1 → player 2 after measuring: input delay in frames for both sides, whether it was auto-picked, and the measured round trip (upper quartile of the 8 samples, ms). Both load the emulator after this. Auto delay = `ceil(rtt / 2 / 16.7) + 1`, clamped 1-30: an input sent at frame f must reach the peer before its frame f + delay, i.e. delay must cover the one-way trip. A number typed into player 1's delay field overrides it |
 | `{"type":"ready","frame":0,"hash":"…"}` | Emulator loaded and held at its first frame. `hash` = hash of the savestate at that frame. When both are ready and the hashes match, both release. Different hashes on the same frame = refuse to start |
 | `{"type":"input","frame":1234,"events":[[8,1],[4,0]]}` | Sent once per emulated frame. `events` = the sender's pad changes `[button, value]` to apply on `frame` (= sender's current frame + delay); usually `[]`. Also means "my inputs through `frame` are final": a peer only runs frame N after receiving an `input` with `frame` ≥ N. Buttons are RetroPad ids 0-15, value 1 = pressed, 0 = released. The pad is implied by the sender: player 1 → port 0, player 2 → port 1 |
 | `{"type":"hash","frame":1260,"hash":"…"}` | Every 60 frames: hash of the full savestate after `frame`. Each side compares with its own hash for that frame and shows IN SYNC / DESYNC |
@@ -48,7 +50,11 @@ A                      server                      B
 |<-- peer-joined --------|                          |
 |-- hello -------------->|-- hello ---------------->|
 |<------------- hello ---|<----------------- hello -|
-|   (both: compare ROM hash, load emulator, hold at first frame)
+|   (both: compare ROM hash)
+|-- ping x8 ------------>|------------------------->|
+|<-------------------------------------- pong x8 ---|
+|-- start delay -------->|------------------------->|
+|   (both: load emulator, hold at first frame)
 |-- ready -------------->|-- ready ---------------->|
 |<------------- ready ---|<----------------- ready -|
 |   (both: release)
@@ -58,4 +64,4 @@ A                      server                      B
 
 ## Size
 
-An idle `input` is about 42 bytes, sent 60 times a second per player; `hash` about 55 bytes once a second.
+An idle `input` is about 42 bytes, sent 60 times a second per player; `hash` about 55 bytes once a second, `ping`/`pong` about 25 bytes every 2 s.
