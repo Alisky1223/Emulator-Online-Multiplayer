@@ -4,7 +4,16 @@ What the code sends today. JSON text frames, one message per frame. The compact 
 
 Code: server `src/Server/Server/Relay/`, client `src/Server/Server/wwwroot/netplay.js`.
 
-## Connection
+## Transports
+
+The page offers two (`transport.js`); both deliver the same messages, so everything below applies to both.
+
+- **Direct (WebRTC, default, #12).** Pairing through the free PeerJS cloud server (`0.peerjs.com`). First to open room `X` registers PeerJS id `emu-online-mp-X-1` and becomes player 1; the second finds the id taken and dials it. Then one reliable, ordered data channel carries JSON objects straight between the browsers. ICE: Google + Cloudflare STUN, PeerJS's free TURN (UDP + TCP) as fallback. The host answers the connection with `{"type":"welcome"}` (or `rejected`/`room-full` for a third player) and synthesises the `joined` / `peer-joined` / `peer-left` messages the relay would send. The status line shows `direct udp` or `relayed via TURN`.
+- **Server relay (WebSocket).** The ASP.NET Core server below.
+
+Both: a side that hears nothing for 15 s while playing stops the game (live pings keep messages flowing even while the peer's tab is hidden).
+
+## Connection (server relay)
 
 ```
 ws://<host>:5279/ws?room=<CODE>
