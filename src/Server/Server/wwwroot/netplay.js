@@ -394,6 +394,8 @@ setInterval(() => {
     refreshRoute();
 }, LIVE_PING_MS);
 
+// Static hosting (GitHub Pages) has no relay server behind it
+if (location.hostname.endsWith(".github.io")) $("transport").querySelector('[value="relay"]').disabled = true;
 $("room").value = new URLSearchParams(location.search).get("room") || "";
 $("form").addEventListener("submit", async (e) => {
     e.preventDefault();
