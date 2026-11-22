@@ -35,8 +35,10 @@ public static class WebSocketRelay
 {
     public const int MaxMessageBytes = 16 * 1024;
 
-    public static async Task HandleAsync(HttpContext context, RelayHub hub, IHostApplicationLifetime lifetime)
+    public static async Task HandleAsync(HttpContext context, RelayHub hub, IHostApplicationLifetime lifetime, ILoggerFactory loggerFactory)
     {
+        var log = loggerFactory.CreateLogger("Relay");
+        var remote = context.Connection.RemoteIpAddress;
         if (!context.WebSockets.IsWebSocketRequest)
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
@@ -52,11 +54,15 @@ public static class WebSocketRelay
         var seat = await hub.JoinAsync(context.Request.Query["room"], peer, stop.Token);
         if (seat is null)
         {
+            log.LogInformation("Rejected {Remote}, room {Room}", remote, context.Request.Query["room"].ToString());
             await CloseAsync(socket, WebSocketCloseStatus.PolicyViolation, "rejected");
             return;
         }
 
+        log.LogInformation("Room {Room}: player {Player} joined from {Remote}", seat.Room, seat.Player, remote);
         var closeStatus = WebSocketCloseStatus.NormalClosure;
+        var started = DateTime.UtcNow;
+        string? error = null;
         try
         {
             closeStatus = await PumpAsync(socket, seat, stop.Token);
@@ -64,9 +70,13 @@ public static class WebSocketRelay
         catch (Exception e) when (e is WebSocketException or OperationCanceledException)
         {
             closeStatus = WebSocketCloseStatus.EndpointUnavailable;
+            error = e.Message;
         }
         finally
         {
+            // Why a peer left is the first thing to know when a remote game drops
+            log.LogInformation("Room {Room}: player {Player} left after {Seconds:F0} s, {Status} {Error}",
+                seat.Room, seat.Player, (DateTime.UtcNow - started).TotalSeconds, closeStatus, error);
             await seat.LeaveAsync();
             await CloseAsync(socket, closeStatus, "");
         }
