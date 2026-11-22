@@ -23,6 +23,21 @@ const ICE_SERVERS = [
     }
 ];
 
+// Returns null for empty input (use the defaults); throws with a user-facing message when invalid
+function parseIceServers(text, username, credential) {
+    const urls = text.split(/[\s,]+/).filter(Boolean);
+    if (urls.length === 0) return null;
+    const bad = urls.find((u) => !/^(stuns?|turns?):\S+$/i.test(u));
+    if (bad) throw new Error(`"${bad}" is not a STUN/TURN URL (must start with stun:, stuns:, turn: or turns:).`);
+    const stun = urls.filter((u) => /^stuns?:/i.test(u));
+    const turn = urls.filter((u) => /^turns?:/i.test(u));
+    if (turn.length > 0 && (!username || !credential)) throw new Error("TURN servers need a username and credential.");
+    const servers = [];
+    if (stun.length > 0) servers.push({ urls: stun });
+    if (turn.length > 0) servers.push({ urls: turn, username, credential });
+    return servers;
+}
+
 function openWebSocketTransport(room, { onMessage, onClosed }) {
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${scheme}//${location.host}/ws?room=${encodeURIComponent(room)}`);
@@ -37,13 +52,13 @@ function openWebSocketTransport(room, { onMessage, onClosed }) {
 
 // First to open the room registers it on the PeerJS server as host (player 1); the second finds the
 // id taken and dials the host instead. After that the two browsers talk directly over a data channel.
-function openWebRtcTransport(room, { onMessage, onClosed }) {
+function openWebRtcTransport(room, { onMessage, onClosed }, iceServers = ICE_SERVERS) {
     let peer = null;
     let conn = null;
     let closed = false;
     // PeerJS ids must end in a letter or digit; room codes may end in - or _
     const hostId = `${PEER_PREFIX}${room}-1`;
-    const options = { debug: 0, config: { iceServers: ICE_SERVERS } };
+    const options = { debug: 0, config: { iceServers } };
 
     const deliver = (m) => { if (!closed) onMessage(m); };
     const end = (reason) => {

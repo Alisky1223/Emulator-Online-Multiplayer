@@ -9,7 +9,12 @@
         h1 { font-size: 18px; margin: 0 0 12px; }
         form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 12px; }
         label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #999; }
-        input, select, button { background: #222; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 6px 8px; font: inherit; }
+        #ice { flex-basis: 100%; font-size: 12px; color: #999; }
+        #ice summary { cursor: pointer; }
+        #ice p { margin: 6px 0; }
+        #ice .row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+        #ice-urls { width: min(100%, 600px); box-sizing: border-box; font: 12px ui-monospace, Consolas, monospace; }
+        input, select, button, textarea { background: #222; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 6px 8px; font: inherit; }
         input[type=number] { width: 70px; }
         input#room { width: 120px; text-transform: uppercase; }
         button { cursor: pointer; }
@@ -43,6 +48,17 @@
         </label>
         <label title="Player 1's value is used by both sides. Empty = auto from the measured ping">Input delay (frames) <input type="number" id="delay" placeholder="auto" min="1" max="30"></label>
         <button type="submit" id="join">Join</button>
+        <details id="ice">
+            <summary>Own STUN/TURN servers (Direct only, optional)</summary>
+            <p>Empty = built-in free servers. Saved in this browser only. Each player sets their own.</p>
+            <label>Server URLs (space or newline separated)
+                <textarea id="ice-urls" rows="3" spellcheck="false" placeholder="stun:stun.example.com:3478 turn:turn.example.com:443?transport=tcp"></textarea>
+            </label>
+            <div class="row">
+                <label>TURN username <input id="ice-user" autocomplete="off" spellcheck="false"></label>
+                <label>TURN credential <input id="ice-cred" type="password" autocomplete="off"></label>
+            </div>
+        </details>
     </form>
     <div id="status">Enter a room code, pick your ROM and press Join.</div>
     <div id="detail"></div>

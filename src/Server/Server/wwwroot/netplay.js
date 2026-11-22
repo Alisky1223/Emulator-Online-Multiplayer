@@ -355,7 +355,7 @@ function connect() {
         onClosed: (reason) => fail(booted
             ? `Connection to the other player lost at frame ${net.frame}. Reload the page to start a new game.`
             : reason || "Could not connect to the server, or the connection was lost. Reload and try again.")
-    });
+    }, local.iceServers || undefined);
 }
 
 function render() {
@@ -381,7 +381,8 @@ function render() {
     const ping = net.rtt === null ? "–" : Math.round(net.rtt);
     // The delay only hides half a round trip; above that every frame waits
     const short = net.rtt !== null && net.rtt / 2 > net.delay * FRAME_MS ? " (too low for this ping)" : "";
-    $("detail").textContent = `room ${local.room} · ${net.route || net.transport} · frame ${net.frame} · input delay ${net.delay} ${net.delaySource}${short}`
+    const ice = local.iceServers ? " (own servers)" : "";
+    $("detail").textContent = `room ${local.room} · ${net.route || net.transport}${ice} · frame ${net.frame} · input delay ${net.delay} ${net.delaySource}${short}`
         + ` (start ping ${net.measuredRtt} ms) · ping ${ping} ms · waited ${net.stalledIterations} iterations`;
 }
 
@@ -397,13 +398,45 @@ setInterval(() => {
 // Static hosting (GitHub Pages) has no relay server behind it
 if (location.hostname.endsWith(".github.io")) $("transport").querySelector('[value="relay"]').disabled = true;
 $("room").value = new URLSearchParams(location.search).get("room") || "";
+
+const ICE_STORAGE_KEY = "emu-online-mp-ice";
+const iceFields = { urls: "ice-urls", username: "ice-user", credential: "ice-cred" };
+try {
+    const saved = JSON.parse(localStorage.getItem(ICE_STORAGE_KEY) || "{}");
+    for (const [key, id] of Object.entries(iceFields)) $(id).value = saved[key] || "";
+    if (saved.urls) $("ice").open = true;
+} catch {
+    // Blocked or corrupt storage: start with empty fields
+}
+
+function readIceServers() {
+    const values = Object.fromEntries(Object.entries(iceFields).map(([key, id]) => [key, $(id).value.trim()]));
+    const servers = parseIceServers(values.urls, values.username, values.credential);
+    try {
+        localStorage.setItem(ICE_STORAGE_KEY, JSON.stringify(values));
+    } catch {
+        // Not saving is fine; the values still apply to this session
+    }
+    return servers;
+}
+
 $("form").addEventListener("submit", async (e) => {
     e.preventDefault();
     if (local) return;
+    let iceServers = null;
+    if ($("transport").value === "webrtc") {
+        try {
+            iceServers = readIceServers();
+        } catch (err) {
+            $("ice").open = true;
+            return setStatus(err.message, "fail");
+        }
+    }
     const file = $("rom").files[0];
     local = {
         room: $("room").value.trim().toUpperCase(),
         transport: $("transport").value,
+        iceServers,
         core: $("core").value,
         // Empty = auto
         delay: $("delay").value.trim() === "" ? null : Math.min(MAX_DELAY, Math.max(1, parseInt($("delay").value, 10))),
