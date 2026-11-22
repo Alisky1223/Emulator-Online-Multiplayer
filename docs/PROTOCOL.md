@@ -6,12 +6,13 @@ Code: server `src/Server/Server/Relay/`, client `src/Server/Server/wwwroot/netpl
 
 ## Transports
 
-The page offers two (`transport.js`); both deliver the same messages, so everything below applies to both.
+The page offers three (`transport.js`); all deliver the same messages, so everything below applies to all.
 
 - **Direct (WebRTC, default, #12).** Pairing through the free PeerJS cloud server (`0.peerjs.com`). First to open room `X` registers PeerJS id `emu-online-mp-X-1` and becomes player 1; the second finds the id taken and dials it. Then one reliable, ordered data channel carries JSON objects straight between the browsers. ICE: Google + Cloudflare STUN, PeerJS's free TURN (UDP + TCP) as fallback. The host answers the connection with `{"type":"welcome"}` (or `rejected`/`room-full` for a third player) and synthesises the `joined` / `peer-joined` / `peer-left` messages the relay would send. The status line shows `direct udp` or `relayed via TURN`.
+- **Direct, paired by this server (WebRTC, #34).** No PeerJS: both join the server relay below, which assigns player 1/2 as usual, but only the WebRTC handshake goes through it (unchanged relay, no server code). Player 1 sends `{"type":"rtc-offer","sdp"}` when a peer is present (`peer-joined`, or `joined` with `peer: true`); player 2 replies `{"type":"rtc-answer","sdp"}`; both send `{"type":"rtc-ice","candidate"}` as candidates are found. Then a reliable, ordered data channel `game` carries the JSON messages, with the same `welcome` handshake as PeerJS mode. The WebSocket stays open but carries nothing else; losing it after the channel opens does not end the game. Needs the page served by our server (not GitHub Pages).
 - **Server relay (WebSocket).** The ASP.NET Core server below.
 
-Both: a side that hears nothing for 15 s while playing stops the game (live pings keep messages flowing even while the peer's tab is hidden).
+All: a side that hears nothing for 15 s while playing stops the game (live pings keep messages flowing even while the peer's tab is hidden).
 
 ## Connection (server relay)
 

@@ -70,7 +70,7 @@ function openWebRtcTransport(room, { onMessage, onClosed }, iceServers = ICE_SER
     const transport = {
         send(m) { if (conn && conn.open) conn.send(m); },
         close() { closed = true; if (peer) peer.destroy(); },
-        route: () => describeRoute(conn)
+        route: () => describeRoute(conn && conn.peerConnection)
     };
 
     const Peer = window.peerjs && window.peerjs.Peer;
@@ -159,6 +159,127 @@ function openWebRtcTransport(room, { onMessage, onClosed }, iceServers = ICE_SER
     return transport;
 }
 
+// Same pairing as the WebSocket relay (our server assigns player 1/2), but the relay only carries the
+// WebRTC handshake. Game messages then go browser to browser over a data channel.
+function openOwnSignalingTransport(room, { onMessage, onClosed }, iceServers = ICE_SERVERS) {
+    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${scheme}//${location.host}/ws?room=${encodeURIComponent(room)}`);
+    let player = 0;
+    let pc = null;
+    let channel = null;
+    let closed = false;
+    let timer = 0;
+    // setRemoteDescription is async; candidates must not overtake the description they belong to
+    let signaling = Promise.resolve();
+
+    const deliver = (m) => { if (!closed) onMessage(m); };
+    const signal = (m) => { if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(m)); };
+    const connected = () => Boolean(channel && channel.readyState === "open");
+    const resetPeer = () => {
+        clearTimeout(timer);
+        if (pc) pc.close();
+        pc = channel = null;
+    };
+    const end = (reason) => {
+        if (closed) return;
+        closed = true;
+        resetPeer();
+        socket.onclose = null;
+        socket.close();
+        onClosed(reason);
+    };
+
+    function newPeer() {
+        resetPeer();
+        const p = pc = new RTCPeerConnection({ iceServers });
+        p.onicecandidate = (e) => { if (e.candidate && pc === p) signal({ type: "rtc-ice", candidate: e.candidate.toJSON() }); };
+        timer = setTimeout(() => {
+            if (pc !== p || connected()) return;
+            if (player === 1) return resetPeer();
+            end("Could not connect to the other player directly. One of the networks may block it; "
+                + "try own STUN/TURN servers or the \"Server relay\" connection.");
+        }, PEER_JOIN_TIMEOUT_MS);
+        return p;
+    }
+
+    function useChannel(c) {
+        channel = c;
+        c.onopen = () => {
+            clearTimeout(timer);
+            // Goes out before the hello that peer-joined triggers
+            if (player === 1) {
+                c.send(JSON.stringify({ type: "welcome" }));
+                deliver({ type: "peer-joined" });
+            }
+        };
+        c.onmessage = (e) => {
+            if (channel !== c) return;
+            const m = JSON.parse(e.data);
+            deliver(m.type === "welcome" ? { type: "joined", player: 2, peer: true } : m);
+        };
+        c.onclose = () => {
+            if (channel !== c) return;
+            if (player === 2) return end("The other player left.");
+            resetPeer();
+            deliver({ type: "peer-left" });
+        };
+    }
+
+    async function offer() {
+        const p = newPeer();
+        useChannel(p.createDataChannel("game", { ordered: true }));
+        await p.setLocalDescription(await p.createOffer());
+        signal({ type: "rtc-offer", sdp: p.localDescription.sdp });
+    }
+
+    async function answer(sdp) {
+        const p = newPeer();
+        p.ondatachannel = (e) => { if (pc === p) useChannel(e.channel); };
+        await p.setRemoteDescription({ type: "offer", sdp });
+        await p.setLocalDescription(await p.createAnswer());
+        signal({ type: "rtc-answer", sdp: p.localDescription.sdp });
+    }
+
+    async function onSignal(m) {
+        switch (m.type) {
+            case "joined":
+                player = m.player;
+                if (player !== 1) return;
+                deliver({ type: "joined", player: 1, peer: false });
+                // Rejoining an empty seat 1 while the guest still waits: no peer-joined will come
+                return m.peer ? offer() : undefined;
+            case "rejected": return deliver(m);
+            case "peer-joined": return offer();
+            case "peer-left":
+                // After the channel is open its own close event reports the leave
+                if (!connected()) resetPeer();
+                return;
+            case "rtc-offer": return answer(m.sdp);
+            case "rtc-answer": return pc && pc.setRemoteDescription({ type: "answer", sdp: m.sdp });
+            case "rtc-ice": return pc && pc.addIceCandidate(m.candidate);
+        }
+    }
+
+    if (!window.RTCPeerConnection) {
+        setTimeout(() => end("This browser does not support WebRTC."), 0);
+        return { send() {}, close() {}, route: async () => null };
+    }
+    socket.onmessage = (e) => {
+        const m = JSON.parse(e.data);
+        signaling = signaling.then(() => onSignal(m)).catch((err) => {
+            if (!connected()) end(`WebRTC handshake failed: ${(err && err.message) || err}`);
+        });
+    };
+    // Once the browsers are connected, losing the signaling server does not matter
+    socket.onclose = () => { if (!connected()) end(null); };
+
+    return {
+        send(m) { if (connected()) channel.send(JSON.stringify(m)); },
+        close() { closed = true; resetPeer(); socket.onclose = null; socket.close(); },
+        route: () => describeRoute(pc)
+    };
+}
+
 function describeError(err) {
     switch (err && err.type) {
         case "network":
@@ -170,8 +291,7 @@ function describeError(err) {
     }
 }
 
-async function describeRoute(conn) {
-    const pc = conn && conn.peerConnection;
+async function describeRoute(pc) {
     if (!pc) return null;
     const stats = await pc.getStats();
     let pair = null;

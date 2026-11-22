@@ -343,7 +343,7 @@ function connect() {
     net.state = "connecting";
     net.transport = local.transport;
     setStatus(local.transport === "webrtc" ? "Connecting to the PeerJS pairing server…" : "Connecting…");
-    const open = local.transport === "webrtc" ? openWebRtcTransport : openWebSocketTransport;
+    const open = { webrtc: openWebRtcTransport, "webrtc-own": openOwnSignalingTransport }[local.transport] || openWebSocketTransport;
     transport = open(local.room, {
         onMessage: (m) => {
             try {
@@ -396,7 +396,9 @@ setInterval(() => {
 }, LIVE_PING_MS);
 
 // Static hosting (GitHub Pages) has no relay server behind it
-if (location.hostname.endsWith(".github.io")) $("transport").querySelector('[value="relay"]').disabled = true;
+if (location.hostname.endsWith(".github.io")) {
+    for (const value of ["relay", "webrtc-own"]) $("transport").querySelector(`[value="${value}"]`).disabled = true;
+}
 $("room").value = new URLSearchParams(location.search).get("room") || "";
 
 const ICE_STORAGE_KEY = "emu-online-mp-ice";
@@ -424,7 +426,7 @@ $("form").addEventListener("submit", async (e) => {
     e.preventDefault();
     if (local) return;
     let iceServers = null;
-    if ($("transport").value === "webrtc") {
+    if ($("transport").value.startsWith("webrtc")) {
         try {
             iceServers = readIceServers();
         } catch (err) {
