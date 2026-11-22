@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: emulator-online-multiplayer
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    branch: main
+    autoDeploy: true

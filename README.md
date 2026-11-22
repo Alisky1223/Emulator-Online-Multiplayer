@@ -147,6 +147,16 @@ The client is published to GitHub Pages by `.github/workflows/pages.yml` on ever
 1. Once: repo **Settings → Pages → Source: GitHub Actions**.
 2. Both players open `https://alisky1223.github.io/Emulator-Online-Multiplayer/`, keep **Connection: Direct (WebRTC)**, type the same room code, pick the same ROM, press **Join**.
 3. The line under the status shows `direct udp` (best) or `relayed via TURN` (a network blocked the direct path; slower).
+4. Optional: **Own STUN/TURN servers** takes your own ICE servers (e.g. a Metered account). Saved in the browser only.
+
+### Over the internet (Render, hosted server)
+
+Runs the whole server (page + WebSocket relay) on Render's free tier from `Dockerfile` + `render.yaml`. **Server relay** then works over plain HTTPS 443, which gets through networks that block WebRTC, tunnels or the PeerJS server.
+
+1. Once: [dashboard.render.com](https://dashboard.render.com) → **New → Blueprint** → connect this GitHub repo → **Apply**. It deploys `main` on every push.
+2. Both players open `https://<service-name>.onrender.com`, pick **Server relay** (or Direct), same room code and ROM, **Join**.
+
+The free tier sleeps after 15 min without traffic; the first visit after that takes about a minute to wake it.
 
 ### Over the internet (Cloudflare quick tunnel, free, no account)
 
