@@ -2,13 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Emulator Online Multiplayer</title>
     <style>
         body { margin: 16px; background: #111; color: #ddd; font: 14px/1.4 system-ui, sans-serif; }
         h1 { font-size: 18px; margin: 0 0 12px; }
         form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 12px; }
         label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #999; }
+        #connection-settings { flex-basis: 100%; }
+        #connection-settings summary { cursor: pointer; }
+        .connection-fields { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-top: 8px; }
         #ice { flex-basis: 100%; font-size: 12px; color: #999; }
         #ice summary { cursor: pointer; }
         #ice p { margin: 6px 0; }
@@ -26,59 +29,59 @@
         #detail { font: 12px ui-monospace, Consolas, monospace; color: #999; min-height: 1.4em; margin-bottom: 8px; }
         #game { width: min(100%, 800px); aspect-ratio: 4 / 3; background: #000; border: 1px solid #333; }
         ul { color: #999; font-size: 12px; padding-left: 18px; max-width: 800px; }
-        @media (pointer: coarse) {
-            input, select, button, textarea { box-sizing: border-box; max-width: 100%; min-height: 44px; font-size: 16px; }
-            #game { box-sizing: border-box; touch-action: none; }
-            .playing #form { display: none; }
-            .playing #game { max-width: calc(100dvh * 4 / 3 - 90px); margin-inline: auto; }
-        }
-        @media (max-width: 480px) {
-            body { margin: 12px; }
-            #form > label { max-width: 100%; min-width: 0; }
-        }
+        #room-action { display: none; }
+        .in-room #room-action { display: inline-block; color: #ddd; }
     </style>
+    <link rel="stylesheet" href="mobile.css">
 </head>
 <body>
     <h1>Emulator Online Multiplayer — two players</h1>
     <form id="form">
-        <label>Room code (same on both sides) <input id="room" required maxlength="32" pattern="[A-Za-z0-9_\-]+" autocomplete="off"></label>
-        <label>ROM (your own file, same on both sides) <input type="file" id="rom" required></label>
-        <label>Core
+        <label>Room code <input id="room" required maxlength="32" pattern="[A-Za-z0-9_\-]+" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+        <label>Game ROM <input type="file" id="rom" required></label>
+        <label>Console
             <select id="core">
                 <option value="segaMD">Genesis / Mega Drive</option>
                 <option value="snes">SNES</option>
                 <option value="nes">NES</option>
             </select>
         </label>
-        <label>Connection
-            <select id="transport">
-                <option value="worker" selected>Cloudflare Worker relay</option>
-                <option value="webrtc">Direct (WebRTC)</option>
-                <option value="webrtc-own">Direct, paired by the relay</option>
-                <option value="relay">Server relay</option>
-            </select>
-        </label>
-        <label id="relay-address-field" style="display: none">Relay server address
-            <input id="relay-address" type="url" placeholder="http://localhost:5279" spellcheck="false">
-        </label>
-        <label title="Player 1's value is used by both sides. Empty = auto from the measured ping">Input delay (frames) <input type="number" id="delay" placeholder="auto" min="1" max="30"></label>
-        <button type="submit" id="join">Join</button>
-        <details id="ice">
-            <summary>Own STUN/TURN servers (Direct options only, optional)</summary>
-            <p>Empty = built-in free servers. Saved in this browser only. Each player sets their own.</p>
-            <label>Server URLs (space or newline separated)
-                <textarea id="ice-urls" rows="3" spellcheck="false" placeholder="stun:stun.example.com:3478 turn:turn.example.com:443?transport=tcp"></textarea>
-            </label>
-            <div class="row">
-                <label>TURN username <input id="ice-user" autocomplete="off" spellcheck="false"></label>
-                <label>TURN credential <input id="ice-cred" type="password" autocomplete="off"></label>
+        <button type="submit" id="join">Join room</button>
+        <details id="connection-settings">
+            <summary>Connection settings</summary>
+            <div class="connection-fields">
+                <label>Connection
+                    <select id="transport">
+                        <option value="worker" selected>Cloudflare Worker relay</option>
+                        <option value="webrtc">Direct (WebRTC)</option>
+                        <option value="webrtc-own">Direct, paired by the relay</option>
+                        <option value="relay">Server relay</option>
+                    </select>
+                </label>
+                <label id="relay-address-field" style="display: none">Relay server address
+                    <input id="relay-address" type="url" placeholder="http://localhost:5279" spellcheck="false">
+                </label>
+                <label title="Player 1's value is used by both sides. Empty = auto from the measured ping">Input delay (frames) <input type="number" id="delay" placeholder="auto" min="1" max="30"></label>
+                <details id="ice">
+                    <summary>Own STUN/TURN servers (Direct options only, optional)</summary>
+                    <p>Empty = built-in free servers. Saved in this browser only. Each player sets their own.</p>
+                    <label>Server URLs (space or newline separated)
+                        <textarea id="ice-urls" rows="3" spellcheck="false" placeholder="stun:stun.example.com:3478 turn:turn.example.com:443?transport=tcp"></textarea>
+                    </label>
+                    <div class="row">
+                        <label>TURN username <input id="ice-user" autocomplete="off" spellcheck="false"></label>
+                        <label>TURN credential <input id="ice-cred" type="password" autocomplete="off"></label>
+                    </div>
+                </details>
             </div>
         </details>
     </form>
     <div id="status">Enter a room code, pick your ROM and press Join.</div>
     <div id="detail"></div>
     <div id="game"></div>
-    <ul>
+    <a id="room-action" href="">Leave room</a>
+    <ul id="help">
+        <li>Both players need the same room code, console and ROM file.</li>
         <li>Both players pick the same connection and relay address. <b>Cloudflare Worker relay</b> sends game inputs through the Worker. <b>Server relay</b> uses a self-hosted relay. The direct options use WebRTC.</li>
         <li>First to join is player 1. Use the on-screen controls on a phone, or use a keyboard or gamepad. Click the game screen before using a keyboard.</li>
         <li>Keep this tab visible: a hidden or minimised tab stops rendering frames, which pauses the game for both players.</li>

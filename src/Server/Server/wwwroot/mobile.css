@@ -1,0 +1,61 @@
+@media (max-width: 640px), (any-pointer: coarse) and (max-width: 950px) {
+    body {
+        margin: 0 auto;
+        max-width: 800px;
+        padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+            max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+        font-size: 1rem;
+        color-scheme: dark;
+    }
+
+    h1 {
+        font-size: 1.25rem;
+        margin-bottom: 16px;
+    }
+
+    #form, .connection-fields {
+        display: grid;
+        align-items: stretch;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #form label, #ice {
+        font-size: 0.875rem;
+        min-width: 0;
+    }
+
+    #form input, #form select, #form button, #form textarea {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 44px;
+        font-size: 1rem;
+    }
+
+    #join {
+        background: #baf06a;
+        color: #17220b;
+        border-color: transparent;
+        font-weight: 700;
+    }
+
+    #connection-settings > summary, #room-action {
+        box-sizing: border-box;
+        min-height: 44px;
+        padding-block: 10px;
+    }
+
+    #ice .row > label { width: 100%; }
+    #detail { overflow-wrap: anywhere; }
+    #game { display: none; box-sizing: border-box; touch-action: none; }
+    .loading-game #game { display: block; margin-inline: auto; }
+    .playing h1, .playing #form, .playing #detail, .playing #help { display: none; }
+    .playing #status { margin-block: 0 8px; }
+}
+
+@media (orientation: landscape) and (any-pointer: coarse) and (max-height: 500px) {
+    .loading-game #game {
+        width: 100%;
+        height: max(180px, calc(100dvh - 125px));
+        aspect-ratio: auto;
+    }
+}

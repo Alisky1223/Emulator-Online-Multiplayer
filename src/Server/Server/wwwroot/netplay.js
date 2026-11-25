@@ -285,6 +285,7 @@ function installFrameHooks(emu) {
 function boot() {
     booted = true;
     net.state = "loading";
+    document.body.classList.add("loading-game");
     setStatus(`Player ${net.player} — ROMs match, loading emulator…`);
     window.EJS_player = "#game";
     window.EJS_core = local.core;
@@ -309,7 +310,7 @@ function boot() {
     const loader = document.createElement("script");
     loader.src = EJS_DATA + "loader.js";
     loader.onerror = () => fail(bundledDataPath
-        ? "Failed to load bundled EmulatorJS. Extract the entire ZIP and launch it again."
+        ? "Failed to load the emulator from this site. Reload the page and try again."
         : "Failed to load EmulatorJS from cdn.emulatorjs.org (internet needed).");
     document.body.appendChild(loader);
 }
@@ -408,6 +409,7 @@ setInterval(() => {
 }, LIVE_PING_MS);
 
 $("room").value = new URLSearchParams(location.search).get("room") || "";
+$("connection-settings").open = !matchMedia("(max-width: 640px), (any-pointer: coarse) and (max-width: 950px)").matches;
 const usesRelayAddress = () => $("transport").value !== "webrtc";
 const relayDefault = () => {
     if ($("transport").value === "worker") return workerRelayAddress;
@@ -492,6 +494,14 @@ $("form").addEventListener("submit", async (e) => {
     };
     for (const el of $("form").elements) el.disabled = true;
     setStatus("Hashing ROM…");
-    local.rom = hashBytes(new Uint8Array(await file.arrayBuffer()));
+    try {
+        local.rom = hashBytes(new Uint8Array(await file.arrayBuffer()));
+    } catch {
+        local = null;
+        for (const el of $("form").elements) el.disabled = false;
+        updateRelayField();
+        return setStatus("Could not read this ROM. Select it again from your files.", "fail");
+    }
+    document.body.classList.add("in-room");
     connect();
 });

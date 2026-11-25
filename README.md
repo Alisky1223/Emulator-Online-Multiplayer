@@ -165,6 +165,12 @@ Each Windows player loads EmulatorJS and the cores from their own extracted file
 
 ### Play on a phone
 
+Open the hosted browser player on your phone. Pick a ROM already in your phone's files, choose its console, and enter the same room code as the other player. The site serves the emulator and console core automatically. You can join from Android or iPhone without installing an emulator or downloading a separate emulator package. Use the on-screen controls once both players are connected.
+
+To build a copy of the hosted player for an HTTP server or static host, run `./scripts/Build-WebPlayer.ps1` from PowerShell with Node.js, npm and tar available. The script prints the output directory. The GitHub Pages workflow uses that same build. Online rooms use the Cloudflare Worker relay by default.
+
+#### Play over Wi-Fi with a PC hosting the player
+
 1. On the PC, run `Launch Mobile Host.cmd` from the portable ZIP. It uses port `5279` and takes the place of `Launch Relay.cmd` while hosting phone players.
 2. Connect the phone to the same Wi-Fi and open the printed **Open on phone** URL in its browser. For example, `http://192.168.1.6:5279`.
 3. Keep **Cloudflare Worker relay** selected. For a LAN-only game, choose **Server relay** on both players and use the Mobile Host's address. Select a ROM already in the phone's files. Use the same room code, core and ROM as the other player.
@@ -174,7 +180,7 @@ The phone needs no app installation. Its browser loads the emulator and selected
 
 ### Direct WebRTC
 
-The client is published to GitHub Pages by `.github/workflows/pages.yml` on every push to `main` that touches `src/Server/Server/wwwroot/` (or run it by hand under **Actions**). In direct mode the two browsers pair through the PeerJS server and then exchange gameplay messages over WebRTC.
+The client is published to GitHub Pages by `.github/workflows/pages.yml` on pushes to `main` that touch the player or its build scripts (or run it by hand under **Actions**). Open **Connection settings** to choose a direct mode. In PeerJS direct mode the two browsers pair through the PeerJS server and then exchange gameplay messages over WebRTC.
 
 1. Once: repo **Settings → Pages → Source: GitHub Actions**.
 2. Both players open `https://alisky1223.github.io/Emulator-Online-Multiplayer/`, select **Direct (WebRTC)**, type the same room code, pick the same ROM, and press **Join**.
