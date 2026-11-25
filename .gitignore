@@ -59,3 +59,10 @@ nunit-*.xml
 # research/ clones (reference only)
 /research/*
 !/research/README.md
+
+# Portable Windows builds and downloaded build dependencies
+/.artifacts/
+
+# Node Packages
+node_modules/
+.wrangler/

@@ -1,0 +1,16 @@
+name = "simple-ping-cloudflare"
+main = "worker.js"
+compatibility_date = "2026-04-07"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true
+
+[[durable_objects.bindings]]
+name = "DEVICES"
+class_name = "Devices"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Devices"]
