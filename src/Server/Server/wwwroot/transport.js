@@ -38,15 +38,21 @@ function parseIceServers(text, username, credential) {
     return servers;
 }
 
-function openWebSocketTransport(room, { onMessage, onClosed }) {
-    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${scheme}//${location.host}/ws?room=${encodeURIComponent(room)}`);
+function relayEndpoint(room, relayAddress) {
+    const endpoint = new URL("/ws", relayAddress || location.origin);
+    endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
+    endpoint.searchParams.set("room", room);
+    return endpoint;
+}
+
+function openWebSocketTransport(room, { onMessage, onClosed, relayAddress, route = "server relay" }) {
+    const socket = new WebSocket(relayEndpoint(room, relayAddress));
     socket.onmessage = (e) => onMessage(JSON.parse(e.data));
     socket.onclose = () => onClosed(null);
     return {
         send(m) { if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(m)); },
         close() { socket.onclose = null; socket.close(); },
-        route: async () => "server relay"
+        route: async () => route
     };
 }
 
@@ -75,7 +81,7 @@ function openWebRtcTransport(room, { onMessage, onClosed }, iceServers = ICE_SER
 
     const Peer = window.peerjs && window.peerjs.Peer;
     if (!Peer) {
-        setTimeout(() => end("PeerJS did not load from cdn.jsdelivr.net (internet needed)."), 0);
+        setTimeout(() => end("PeerJS did not load."), 0);
         return transport;
     }
 
@@ -161,9 +167,8 @@ function openWebRtcTransport(room, { onMessage, onClosed }, iceServers = ICE_SER
 
 // Same pairing as the WebSocket relay (our server assigns player 1/2), but the relay only carries the
 // WebRTC handshake. Game messages then go browser to browser over a data channel.
-function openOwnSignalingTransport(room, { onMessage, onClosed }, iceServers = ICE_SERVERS) {
-    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${scheme}//${location.host}/ws?room=${encodeURIComponent(room)}`);
+function openOwnSignalingTransport(room, { onMessage, onClosed, relayAddress }, iceServers = ICE_SERVERS) {
+    const socket = new WebSocket(relayEndpoint(room, relayAddress));
     let player = 0;
     let pc = null;
     let channel = null;

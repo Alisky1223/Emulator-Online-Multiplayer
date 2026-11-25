@@ -1,6 +1,13 @@
 // Pinned: both peers must run the exact same EmulatorJS + core build
 const EJS_VERSION = "4.2.3";
-const EJS_DATA = `https://cdn.emulatorjs.org/${EJS_VERSION}/data/`;
+const bundledDataPath = document.currentScript.dataset.emulatorData;
+const workerRelayAddress = "https://simple-ping-cloudflare.alirezaasadi3saleazzanjan.workers.dev";
+const EJS_DATA = bundledDataPath
+    ? new URL(bundledDataPath, document.baseURI).href
+    : `https://cdn.emulatorjs.org/${EJS_VERSION}/data/`;
+const defaultRelayAddress = bundledDataPath && location.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)
+    ? "http://localhost:5279"
+    : location.origin;
 // Highest digital RetroPad button id; above it are analog axes and EmulatorJS hotkeys
 const MAX_BUTTON = 15;
 const HASH_EVERY = 60;
@@ -182,6 +189,7 @@ function tryStart() {
     }
     released = true;
     net.state = "running";
+    document.body.classList.add("playing");
     const parent = window.EJS_emulator.elements && window.EJS_emulator.elements.parent;
     if (parent && parent.focus) parent.focus();
 }
@@ -300,7 +308,9 @@ function boot() {
     };
     const loader = document.createElement("script");
     loader.src = EJS_DATA + "loader.js";
-    loader.onerror = () => fail("Failed to load EmulatorJS from cdn.emulatorjs.org (internet needed).");
+    loader.onerror = () => fail(bundledDataPath
+        ? "Failed to load bundled EmulatorJS. Extract the entire ZIP and launch it again."
+        : "Failed to load EmulatorJS from cdn.emulatorjs.org (internet needed).");
     document.body.appendChild(loader);
 }
 
@@ -345,6 +355,8 @@ function connect() {
     setStatus(local.transport === "webrtc" ? "Connecting to the PeerJS pairing server…" : "Connecting…");
     const open = { webrtc: openWebRtcTransport, "webrtc-own": openOwnSignalingTransport }[local.transport] || openWebSocketTransport;
     transport = open(local.room, {
+        relayAddress: local.relayAddress,
+        route: local.transport === "worker" ? "Cloudflare Worker relay" : "server relay",
         onMessage: (m) => {
             try {
                 onMessage(m);
@@ -395,11 +407,36 @@ setInterval(() => {
     refreshRoute();
 }, LIVE_PING_MS);
 
-// Static hosting (GitHub Pages) has no relay server behind it
-if (location.hostname.endsWith(".github.io")) {
-    for (const value of ["relay", "webrtc-own"]) $("transport").querySelector(`[value="${value}"]`).disabled = true;
-}
 $("room").value = new URLSearchParams(location.search).get("room") || "";
+const usesRelayAddress = () => $("transport").value !== "webrtc";
+const relayDefault = () => {
+    if ($("transport").value === "worker") return workerRelayAddress;
+    return location.hostname.endsWith(".github.io") ? "" : defaultRelayAddress;
+};
+if (bundledDataPath) {
+    $("asset-source").textContent = "EmulatorJS and the cores are served by the player host and cached by your browser.";
+}
+function updateRelayField() {
+    $("relay-address-field").style.display = usesRelayAddress() ? "" : "none";
+    $("relay-address").disabled = !usesRelayAddress();
+    $("relay-address").placeholder = relayDefault() || "https://your-relay.example.com";
+    $("relay-address").required = usesRelayAddress() && !relayDefault();
+}
+$("transport").addEventListener("change", () => {
+    $("relay-address").value = "";
+    updateRelayField();
+});
+updateRelayField();
+
+function readRelayAddress() {
+    if (!usesRelayAddress()) return null;
+    const address = $("relay-address").value.trim() || relayDefault();
+    const url = new URL(address);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
+        throw new Error("Enter a relay server address beginning with http:// or https://.");
+    }
+    return url.origin;
+}
 
 const ICE_STORAGE_KEY = "emu-online-mp-ice";
 const iceFields = { urls: "ice-urls", username: "ice-user", credential: "ice-cred" };
@@ -435,10 +472,17 @@ $("form").addEventListener("submit", async (e) => {
         }
     }
     const file = $("rom").files[0];
+    let relayAddress;
+    try {
+        relayAddress = readRelayAddress();
+    } catch (err) {
+        return setStatus(err.message, "fail");
+    }
     local = {
         room: $("room").value.trim().toUpperCase(),
         transport: $("transport").value,
         iceServers,
+        relayAddress,
         core: $("core").value,
         // Empty = auto
         delay: $("delay").value.trim() === "" ? null : Math.min(MAX_DELAY, Math.max(1, parseInt($("delay").value, 10))),

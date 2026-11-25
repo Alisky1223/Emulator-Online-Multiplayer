@@ -126,6 +126,12 @@ Emulator-Online-Multiplayer/
 
 ## ▶️ Run it (two players over WebSocket, M1)
 
+Open the [browser player](https://alisky1223.github.io/Emulator-Online-Multiplayer/) and keep **Cloudflare Worker relay** selected. Both players enter the same room code, select the same core and ROM, and press **Join**. The first player to join takes player 1. The Worker forwards gameplay messages between the two players. Each browser loads its own ROM.
+
+The default relay is [simple-ping-cloudflare](https://simple-ping-cloudflare.alirezaasadi3saleazzanjan.workers.dev/). To test the Worker locally with Wrangler, run `npx wrangler dev` from the repository root and enter the printed `http://127.0.0.1:8787` address in the player's **Relay server address** field. The Worker keeps the device ping page at `/` and accepts gameplay WebSockets at `/ws?room=CODE`.
+
+### Self-hosted relay on a LAN
+
 One PC runs the server; it also serves the browser client. Needs the .NET 10 SDK, and internet on both machines (EmulatorJS loads from `cdn.emulatorjs.org`).
 
 ```
@@ -137,24 +143,51 @@ The server listens on port **5279** on all interfaces and prints the URLs to ope
 1. On the server PC open `http://localhost:5279`.
 2. On the second machine (same LAN) open `http://<server-PC-LAN-IP>:5279`, e.g. `http://192.168.1.6:5279`. The server prints its addresses at start; otherwise run `ipconfig` on the server PC and take the **IPv4 Address** of the Wi-Fi / Ethernet adapter.
 3. The first time, Windows Firewall may ask whether to allow the server: allow it on **private networks**. If the second machine cannot connect, that prompt was dismissed; allow inbound TCP 5279 by hand.
-4. On both: type the same room code, pick the same ROM file (your own copy on each machine), press **Join**. First to join is player 1, second is player 2.
+4. On both, choose **Server relay**, leave the relay address blank, enter the same room code, select the same ROM file and press **Join**.
 5. When both emulators have loaded the game starts on both. Click the game screen and play with the normal EmulatorJS keys or a gamepad. The status line shows **IN SYNC** or **DESYNC**.
 
-### Over the internet (GitHub Pages + direct WebRTC, recommended)
+### Portable Windows build
 
-The client is published to GitHub Pages by `.github/workflows/pages.yml` on every push to `main` that touches `src/Server/Server/wwwroot/` (or run it by hand under **Actions**). No server needed: the two browsers pair through the free PeerJS server and then connect directly.
+Build the Windows x64 ZIP with PowerShell from the repository root. Building requires the .NET 10 SDK, Node.js with npm, and access to the package sources.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build-Portable.ps1
+```
+
+The ZIP is written to `.artifacts/Emulator-Online-Multiplayer-win-x64.zip`. It includes the .NET runtime, EmulatorJS, the Genesis, SNES and NES cores, and PeerJS.
+
+1. Each Windows player extracts the ZIP, double-clicks `Launch Player.cmd`, and opens `http://localhost:5280`.
+2. Keep **Cloudflare Worker relay** selected. Pick the same room code, core and ROM on both PCs, then press **Join**.
+
+To self-host on a LAN, start `Launch Relay.cmd` on the relay PC. On both players, select **Server relay** and enter the relay's reachable URL, such as `http://192.168.1.6:5279`. Leave the address blank when the relay is on the same PC as the portable player.
+
+Each Windows player loads EmulatorJS and the cores from their own extracted files. The relay listens for multiplayer WebSockets at `/ws` and exposes a status check at `/health`. The portable player currently supports Windows x64.
+
+### Play on a phone
+
+1. On the PC, run `Launch Mobile Host.cmd` from the portable ZIP. It uses port `5279` and takes the place of `Launch Relay.cmd` while hosting phone players.
+2. Connect the phone to the same Wi-Fi and open the printed **Open on phone** URL in its browser. For example, `http://192.168.1.6:5279`.
+3. Keep **Cloudflare Worker relay** selected. For a LAN-only game, choose **Server relay** on both players and use the Mobile Host's address. Select a ROM already in the phone's files. Use the same room code, core and ROM as the other player.
+4. If you're playing on the host PC too, open `http://localhost:5279`. Use the on-screen controls on the phone.
+
+The phone needs no app installation. Its browser loads the emulator and selected core from the PC and can reuse its cached copies. The ROM stays on the phone, and the WebSocket carries the multiplayer messages.
+
+### Direct WebRTC
+
+The client is published to GitHub Pages by `.github/workflows/pages.yml` on every push to `main` that touches `src/Server/Server/wwwroot/` (or run it by hand under **Actions**). In direct mode the two browsers pair through the PeerJS server and then exchange gameplay messages over WebRTC.
 
 1. Once: repo **Settings → Pages → Source: GitHub Actions**.
-2. Both players open `https://alisky1223.github.io/Emulator-Online-Multiplayer/`, keep **Connection: Direct (WebRTC)**, type the same room code, pick the same ROM, press **Join**.
+2. Both players open `https://alisky1223.github.io/Emulator-Online-Multiplayer/`, select **Direct (WebRTC)**, type the same room code, pick the same ROM, and press **Join**.
 3. The line under the status shows `direct udp` (best) or `relayed via TURN` (a network blocked the direct path; slower).
 4. Optional: **Own STUN/TURN servers** takes your own ICE servers (e.g. a Metered account). Saved in the browser only.
 
 ### Over the internet (Render, hosted server)
 
-Runs the whole server (page + WebSocket relay) on Render's free tier from `Dockerfile` + `render.yaml`. **Server relay** then works over plain HTTPS 443, which gets through networks that block WebRTC, tunnels or the PeerJS server.
+Runs the WebSocket relay on Render from `Dockerfile` + `render.yaml`. Players use the portable build with **Server relay** over HTTPS.
 
 1. Once: [dashboard.render.com](https://dashboard.render.com) → **New → Blueprint** → connect this GitHub repo → **Apply**. It deploys `main` on every push.
-2. Both players open `https://<service-name>.onrender.com`, pick **Server relay** (or Direct), same room code and ROM, **Join**.
+2. Both players open their local player at `http://localhost:5280`, pick **Server relay**, and enter `https://<service-name>.onrender.com` as the relay address.
+3. For a service created before relay-only mode, set `RunMode=Relay` in its environment and set its health check path to `/health`.
 
 The free tier sleeps after 15 min without traffic; the first visit after that takes about a minute to wake it.
 
@@ -164,7 +197,7 @@ Exposes the server on a public `https://….trycloudflare.com` URL; no router or
 
 1. Install once: `winget install --id Cloudflare.cloudflared`
 2. Run the server as above, then in a second terminal: `cloudflared tunnel --url http://localhost:5279`
-3. It prints `https://<random>.trycloudflare.com`. Both players open **that** URL (also the host: then both go through the same path). Send it to your friend; it changes every time cloudflared restarts.
+3. Both players open the printed `https://<random>.trycloudflare.com` URL and choose **Server relay**. The URL changes every time cloudflared restarts.
 4. Leave **Input delay** empty (auto): player 1 measures the ping to player 2 before the start and picks the delay (`ceil(ping / 2 / 16.7 ms) + 1` frames). The line under the status shows the delay, the start ping and the live ping, and says when the delay is too low for the current ping. If it stutters, type a higher delay on player 1's side and rejoin.
 
 Quick tunnels are for testing (no uptime guarantee). Traffic goes player → Cloudflare → your PC → Cloudflare → player, so the ping is higher than a direct link.

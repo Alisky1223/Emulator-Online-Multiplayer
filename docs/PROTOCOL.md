@@ -2,29 +2,31 @@
 
 What the code sends today. JSON text frames, one message per frame. The compact bitmask input format planned in #7 is not implemented yet; when it lands it replaces `input` below.
 
-Code: server `src/Server/Server/Relay/`, client `src/Server/Server/wwwroot/netplay.js`.
+Code: Cloudflare relay `src/Server/Worker/`, ASP.NET Core relay `src/Server/Server/Relay/`, client `src/Server/Server/wwwroot/netplay.js`.
 
 ## Transports
 
-The page offers three (`transport.js`); all deliver the same messages, so everything below applies to all.
+The page offers four options in `transport.js`. They use the same gameplay messages.
 
-- **Direct (WebRTC, default, #12).** Pairing through the free PeerJS cloud server (`0.peerjs.com`). First to open room `X` registers PeerJS id `emu-online-mp-X-1` and becomes player 1; the second finds the id taken and dials it. Then one reliable, ordered data channel carries JSON objects straight between the browsers. ICE: Google + Cloudflare STUN, PeerJS's free TURN (UDP + TCP) as fallback. The host answers the connection with `{"type":"welcome"}` (or `rejected`/`room-full` for a third player) and synthesises the `joined` / `peer-joined` / `peer-left` messages the relay would send. The status line shows `direct udp` or `relayed via TURN`.
-- **Direct, paired by this server (WebRTC, #34).** No PeerJS: both join the server relay below, which assigns player 1/2 as usual, but only the WebRTC handshake goes through it (unchanged relay, no server code). Player 1 sends `{"type":"rtc-offer","sdp"}` when a peer is present (`peer-joined`, or `joined` with `peer: true`); player 2 replies `{"type":"rtc-answer","sdp"}`; both send `{"type":"rtc-ice","candidate"}` as candidates are found. Then a reliable, ordered data channel `game` carries the JSON messages, with the same `welcome` handshake as PeerJS mode. The WebSocket stays open but carries nothing else; losing it after the channel opens does not end the game. Needs the page served by our server (not GitHub Pages).
+- **Cloudflare Worker relay (default).** A secure WebSocket carries gameplay messages through the Worker. Each normalized room code maps to one Durable Object, which tracks the seats using WebSocket attachments.
+- **Direct (WebRTC, #12).** Pairing through the free PeerJS cloud server (`0.peerjs.com`). First to open room `X` registers PeerJS id `emu-online-mp-X-1` and becomes player 1; the second finds the id taken and dials it. Then one reliable, ordered data channel carries JSON objects straight between the browsers. ICE: Google + Cloudflare STUN, PeerJS's free TURN (UDP + TCP) as fallback. The host answers the connection with `{"type":"welcome"}` (or `rejected`/`room-full` for a third player) and synthesises the `joined` / `peer-joined` / `peer-left` messages the relay would send. The status line shows `direct udp` or `relayed via TURN`.
+- **Direct, paired by the relay (WebRTC, #34).** Both players connect to a compatible WebSocket relay for the handshake. Player 1 sends `{"type":"rtc-offer","sdp"}` when a peer is present (`peer-joined`, or `joined` with `peer: true`). Player 2 replies with `{"type":"rtc-answer","sdp"}`. Both send `{"type":"rtc-ice","candidate"}` as candidates are found. A reliable, ordered data channel `game` then carries gameplay, with the same `welcome` handshake as PeerJS mode.
 - **Server relay (WebSocket).** The ASP.NET Core server below.
 
 All: a side that hears nothing for 15 s while playing stops the game (live pings keep messages flowing even while the peer's tab is hidden).
 
-## Connection (server relay)
+## Connection (WebSocket relays)
 
 ```
 ws://<host>:5279/ws?room=<CODE>
+wss://<worker-host>/ws?room=<CODE>
 ```
 
 - Room code: 1-32 chars of `A-Z 0-9 - _`, case-insensitive (server upper-cases it).
 - A room holds two peers. First to join is player 1, second is player 2. A freed seat is given to the next joiner.
-- The server keeps rooms in memory only. It never parses, stores or simulates anything a peer sends, and never sees the ROM.
+- The relays keep room membership for the life of the sockets and forward peer messages as text. Each browser loads its own ROM.
 - Max message size 16 KB; text frames only. Bigger or binary closes the socket.
-- Server pings every 5 s and drops a peer that does not answer within 15 s.
+- The ASP.NET Core server also pings every 5 s and drops a peer that does not answer within 15 s.
 
 ## Server → client
 

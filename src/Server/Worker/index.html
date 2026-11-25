@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Device Ping</title>
+<style>
+  :root { color-scheme: light dark; font: 1rem/1.5 system-ui, sans-serif }
+  main { max-width: 28rem; margin: 3rem auto; padding: 0 1rem }
+  h1 { margin: 0 0 1.25rem; font-size: 1.75rem }
+  form, li { display: flex; gap: .75rem; align-items: center }
+  [hidden] { display: none }
+  input, button { font: inherit; padding: .45rem .65rem }
+  input { flex: 1; min-width: 0 }
+  ul { padding: 0 }
+  li { justify-content: space-between; border-top: 1px solid GrayText; padding: .65rem 0; overflow-wrap: anywhere }
+</style>
+<main>
+  <h1>Device Ping</h1>
+  <form>
+    <input aria-label="Device name" placeholder="Device name" maxlength="40" required>
+    <button>Connect</button>
+  </form>
+  <p role="status">Enter a name to connect this device.</p>
+  <ul aria-label="Online devices"></ul>
+</main>
+<script>
+  const form = document.querySelector('form')
+  const nameInput = form.querySelector('input')
+  const connect = form.querySelector('button')
+  const status = document.querySelector('[role=status]')
+  const list = document.querySelector('ul')
+
+  form.onsubmit = event => {
+    event.preventDefault()
+    const name = nameInput.value.trim()
+    if (!name) return
+    connect.disabled = true
+    status.textContent = 'Connecting…'
+
+    const url = new URL('/ws', location.href)
+    url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    url.searchParams.set('name', name)
+    const socket = new WebSocket(url)
+    let self, pending
+    let ticket = 0
+
+    function finish(message) {
+      clearTimeout(pending.timer)
+      pending = null
+      status.textContent = message
+    }
+
+    function ping(device) {
+      if (socket.readyState !== WebSocket.OPEN || pending) return
+      const started = performance.now()
+      const timer = setTimeout(() => finish(device.name + ' did not reply.'), 5000)
+      pending = { device, started, timer, ticket: ++ticket }
+      status.textContent = 'Pinging ' + device.name + '…'
+      socket.send(JSON.stringify({ type: 'ping', to: device.id, ticket }))
+    }
+
+    socket.onmessage = ({ data }) => {
+      const message = JSON.parse(data)
+      if (message.type === 'joined') {
+        self = message.id
+        form.hidden = true
+        status.textContent = 'Connected as ' + name + '.'
+      } else if (message.type === 'devices') {
+        list.replaceChildren(...message.devices.map(device => {
+          const row = document.createElement('li')
+          const label = document.createElement('span')
+          label.textContent = device.name
+          row.append(label)
+          if (device.id === self) {
+            label.append(' (you)')
+          } else {
+            const button = document.createElement('button')
+            button.textContent = 'Ping'
+            button.setAttribute('aria-label', 'Ping ' + device.name)
+            button.onclick = () => ping(device)
+            row.append(button)
+          }
+          return row
+        }))
+      } else if (message.type === 'ping') {
+        socket.send(JSON.stringify({ type: 'pong', to: message.from, ticket: message.ticket }))
+      } else if (pending && message.from === pending.device.id && message.ticket === pending.ticket) {
+        if (message.type === 'pong') {
+          const ms = Math.round(performance.now() - pending.started)
+          finish(pending.device.name + ' replied in ' + ms + ' ms.')
+        } else if (message.type === 'offline') {
+          finish(pending.device.name + ' is offline.')
+        }
+      }
+    }
+
+    socket.onclose = () => {
+      if (pending) clearTimeout(pending.timer)
+      list.replaceChildren()
+      form.hidden = false
+      connect.disabled = false
+      status.textContent = 'Disconnected. Connect to try again.'
+    }
+  }
+</script>
+</html>

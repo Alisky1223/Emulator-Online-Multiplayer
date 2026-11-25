@@ -1,5 +1,7 @@
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Integration.Tests;
@@ -65,5 +67,30 @@ public class WebSocketRelayTests : IClassFixture<WebApplicationFactory<Program>>
         var html = await _factory.CreateClient().GetStringAsync("/");
 
         Assert.Contains("netplay.js", html);
+    }
+
+    [Fact]
+    public async Task Relay_mode_accepts_websockets_and_exposes_no_player_assets()
+    {
+        using var relay = _factory.WithWebHostBuilder(builder => builder.UseSetting("RunMode", "Relay"));
+        using var client = relay.CreateClient();
+
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/netplay.js")).StatusCode);
+
+        using var socket = await relay.Server.CreateWebSocketClient()
+            .ConnectAsync(new Uri("ws://localhost/ws?room=standalone"), CancellationToken.None);
+        Assert.Equal("""{"type":"joined","player":1,"peer":false}""", await ReceiveAsync(socket));
+    }
+
+    [Fact]
+    public async Task Player_mode_serves_the_page_without_a_relay_endpoint()
+    {
+        using var player = _factory.WithWebHostBuilder(builder => builder.UseSetting("RunMode", "Player"));
+        using var client = player.CreateClient();
+
+        Assert.Contains("netplay.js", await client.GetStringAsync("/"));
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/ws?room=standalone")).StatusCode);
     }
 }

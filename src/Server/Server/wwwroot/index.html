@@ -26,6 +26,16 @@
         #detail { font: 12px ui-monospace, Consolas, monospace; color: #999; min-height: 1.4em; margin-bottom: 8px; }
         #game { width: min(100%, 800px); aspect-ratio: 4 / 3; background: #000; border: 1px solid #333; }
         ul { color: #999; font-size: 12px; padding-left: 18px; max-width: 800px; }
+        @media (pointer: coarse) {
+            input, select, button, textarea { box-sizing: border-box; max-width: 100%; min-height: 44px; font-size: 16px; }
+            #game { box-sizing: border-box; touch-action: none; }
+            .playing #form { display: none; }
+            .playing #game { max-width: calc(100dvh * 4 / 3 - 90px); margin-inline: auto; }
+        }
+        @media (max-width: 480px) {
+            body { margin: 12px; }
+            #form > label { max-width: 100%; min-width: 0; }
+        }
     </style>
 </head>
 <body>
@@ -40,12 +50,16 @@
                 <option value="nes">NES</option>
             </select>
         </label>
-        <label title="Direct: the browsers connect to each other (WebRTC), paired by the PeerJS server or by this server. Server relay: everything goes through this server">Connection
+        <label>Connection
             <select id="transport">
+                <option value="worker" selected>Cloudflare Worker relay</option>
                 <option value="webrtc">Direct (WebRTC)</option>
-                <option value="webrtc-own">Direct, paired by this server</option>
+                <option value="webrtc-own">Direct, paired by the relay</option>
                 <option value="relay">Server relay</option>
             </select>
+        </label>
+        <label id="relay-address-field" style="display: none">Relay server address
+            <input id="relay-address" type="url" placeholder="http://localhost:5279" spellcheck="false">
         </label>
         <label title="Player 1's value is used by both sides. Empty = auto from the measured ping">Input delay (frames) <input type="number" id="delay" placeholder="auto" min="1" max="30"></label>
         <button type="submit" id="join">Join</button>
@@ -65,11 +79,12 @@
     <div id="detail"></div>
     <div id="game"></div>
     <ul>
-        <li>Both players pick the same connection. <b>Direct</b> pairs the two browsers through the free PeerJS server and then sends everything between them, which is the fastest; if a network blocks that it falls back to a free relay, or pick <b>Server relay</b>. <b>Direct, paired by this server</b> does the same without PeerJS: this server only passes the WebRTC handshake (not on GitHub Pages).</li>
-        <li>First to join a room is player 1, second is player 2. Both use the normal EmulatorJS keys (arrows, Enter = Start, Z / X / S ...) or a gamepad on their own machine. Click the game screen first.</li>
+        <li>Both players pick the same connection and relay address. <b>Cloudflare Worker relay</b> sends game inputs through the Worker. <b>Server relay</b> uses a self-hosted relay. The direct options use WebRTC.</li>
+        <li>First to join is player 1. Use the on-screen controls on a phone, or use a keyboard or gamepad. Click the game screen before using a keyboard.</li>
         <li>Keep this tab visible: a hidden or minimised tab stops rendering frames, which pauses the game for both players.</li>
         <li>Do not use save/load state, restart, fast forward, rewind or cheats: they change one side only and cause a desync.</li>
-        <li>Needs internet: EmulatorJS and the core load from <code>cdn.emulatorjs.org</code>. The ROM never leaves your browser; only a hash of it is compared.</li>
+        <li id="asset-source">EmulatorJS and the core load from <code>cdn.emulatorjs.org</code>.</li>
+        <li>The ROM never leaves your browser; only a hash of it is compared.</li>
     </ul>
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
     <script src="transport.js"></script>

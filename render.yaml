@@ -4,6 +4,9 @@ services:
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
-    healthCheckPath: /
+    healthCheckPath: /health
+    envVars:
+      - key: RunMode
+        value: Relay
     branch: main
     autoDeploy: true

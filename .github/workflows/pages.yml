@@ -1,6 +1,6 @@
 name: Deploy client to GitHub Pages
 
-# The browser client is static files; with the direct (WebRTC) connection it needs no server
+# The static browser client connects to the Cloudflare Worker relay by default.
 on:
   push:
     branches: [main]

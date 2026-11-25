@@ -1,0 +1,26 @@
+name = "simple-ping-cloudflare"
+main = "worker.js"
+compatibility_date = "2026-04-07"
+
+workers_dev = true
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true
+
+[[durable_objects.bindings]]
+name = "DEVICES"
+class_name = "Devices"
+
+[[durable_objects.bindings]]
+name = "GAME_ROOMS"
+class_name = "GameRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Devices"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["GameRoom"]
