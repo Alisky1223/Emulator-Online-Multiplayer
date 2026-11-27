@@ -38,15 +38,17 @@ function parseIceServers(text, username, credential) {
     return servers;
 }
 
-function openWebSocketTransport(room, { onMessage, onClosed }) {
-    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${scheme}//${location.host}/ws?room=${encodeURIComponent(room)}`);
+function openWebSocketTransport(room, { onMessage, onClosed, relayOrigin, relayName }) {
+    const endpoint = new URL("/ws", relayOrigin);
+    endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
+    endpoint.searchParams.set("room", room);
+    const socket = new WebSocket(endpoint);
     socket.onmessage = (e) => onMessage(JSON.parse(e.data));
     socket.onclose = () => onClosed(null);
     return {
         send(m) { if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(m)); },
         close() { socket.onclose = null; socket.close(); },
-        route: async () => "server relay"
+        route: async () => relayName
     };
 }
 
@@ -75,7 +77,7 @@ function openWebRtcTransport(room, { onMessage, onClosed }, iceServers = ICE_SER
 
     const Peer = window.peerjs && window.peerjs.Peer;
     if (!Peer) {
-        setTimeout(() => end("PeerJS did not load from cdn.jsdelivr.net (internet needed)."), 0);
+        setTimeout(() => end("PeerJS did not load. Reload the page and try again."), 0);
         return transport;
     }
 

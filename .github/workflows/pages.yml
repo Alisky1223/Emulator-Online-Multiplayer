@@ -1,10 +1,14 @@
 name: Deploy client to GitHub Pages
 
-# The browser client is static files; with the direct (WebRTC) connection it needs no server
+# Bundle the emulator and cores into the static player.
 on:
   push:
     branches: [main]
-    paths: ["src/Server/Server/wwwroot/**", ".github/workflows/pages.yml"]
+    paths:
+      - "src/Server/Server/wwwroot/**"
+      - "scripts/Build-WebPlayer.ps1"
+      - "scripts/Bundle-PlayerAssets.ps1"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -24,9 +28,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
       - uses: actions/configure-pages@v6
+      - name: Build player with bundled emulator assets
+        shell: pwsh
+        run: ./scripts/Build-WebPlayer.ps1 -OutputDirectory .artifacts/pages
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: src/Server/Server/wwwroot
+          path: .artifacts/pages
       - id: deployment
         uses: actions/deploy-pages@v5
