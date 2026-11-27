@@ -42,7 +42,8 @@
         </label>
         <label title="Direct: the browsers connect to each other (WebRTC). Server relay: everything goes through this server">Connection
             <select id="transport">
-                <option value="webrtc">Direct (WebRTC)</option>
+                <option value="worker" hidden disabled>Cloudflare Worker relay</option>
+                <option value="webrtc" selected>Direct (WebRTC)</option>
                 <option value="relay">Server relay</option>
             </select>
         </label>
@@ -68,7 +69,8 @@
         <li>First to join a room is player 1, second is player 2. Both use the normal EmulatorJS keys (arrows, Enter = Start, Z / X / S ...) or a gamepad on their own machine. Click the game screen first.</li>
         <li>Keep this tab visible: a hidden or minimised tab stops rendering frames, which pauses the game for both players.</li>
         <li>Do not use save/load state, restart, fast forward, rewind or cheats: they change one side only and cause a desync.</li>
-        <li>Needs internet: EmulatorJS and the core load from <code>cdn.emulatorjs.org</code>. The ROM never leaves your browser; only a hash of it is compared.</li>
+        <li id="asset-source">EmulatorJS and the core load from <code>cdn.emulatorjs.org</code>.</li>
+        <li>The ROM stays in your browser. The player shares its hash to check that both players chose the same ROM.</li>
     </ul>
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
     <script src="transport.js"></script>

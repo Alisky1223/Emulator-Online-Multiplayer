@@ -1,6 +1,10 @@
 // Pinned: both peers must run the exact same EmulatorJS + core build
 const EJS_VERSION = "4.2.3";
-const EJS_DATA = `https://cdn.emulatorjs.org/${EJS_VERSION}/data/`;
+const bundledDataPath = document.currentScript.dataset.emulatorData;
+const EJS_DATA = bundledDataPath
+    ? new URL(bundledDataPath, document.baseURI).href
+    : `https://cdn.emulatorjs.org/${EJS_VERSION}/data/`;
+const cloudflareRelay = "https://simple-ping-cloudflare.alirezaasadi3saleazzanjan.workers.dev";
 // Highest digital RetroPad button id; above it are analog axes and EmulatorJS hotkeys
 const MAX_BUTTON = 15;
 const HASH_EVERY = 60;
@@ -300,7 +304,9 @@ function boot() {
     };
     const loader = document.createElement("script");
     loader.src = EJS_DATA + "loader.js";
-    loader.onerror = () => fail("Failed to load EmulatorJS from cdn.emulatorjs.org (internet needed).");
+    loader.onerror = () => fail(bundledDataPath
+        ? "Failed to load the emulator from this site. Reload the page and try again."
+        : "Failed to load EmulatorJS from cdn.emulatorjs.org (internet needed).");
     document.body.appendChild(loader);
 }
 
@@ -344,7 +350,10 @@ function connect() {
     net.transport = local.transport;
     setStatus(local.transport === "webrtc" ? "Connecting to the PeerJS pairing server…" : "Connecting…");
     const open = local.transport === "webrtc" ? openWebRtcTransport : openWebSocketTransport;
+    const useCloudflare = local.transport === "worker";
     transport = open(local.room, {
+        relayOrigin: useCloudflare ? cloudflareRelay : location.origin,
+        relayName: useCloudflare ? "Cloudflare Worker relay" : "server relay",
         onMessage: (m) => {
             try {
                 onMessage(m);
@@ -395,8 +404,17 @@ setInterval(() => {
     refreshRoute();
 }, LIVE_PING_MS);
 
-// Static hosting (GitHub Pages) has no relay server behind it
-if (location.hostname.endsWith(".github.io")) $("transport").querySelector('[value="relay"]').disabled = true;
+if (bundledDataPath) {
+    $("asset-source").textContent = "This site serves EmulatorJS and the console cores.";
+}
+if (location.hostname.endsWith(".github.io")) {
+    const connection = $("transport");
+    const worker = connection.querySelector('[value="worker"]');
+    worker.hidden = false;
+    worker.disabled = false;
+    connection.querySelector('[value="relay"]').disabled = true;
+    connection.value = "worker";
+}
 $("room").value = new URLSearchParams(location.search).get("room") || "";
 
 const ICE_STORAGE_KEY = "emu-online-mp-ice";
